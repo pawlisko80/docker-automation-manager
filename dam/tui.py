@@ -37,7 +37,10 @@ from rich.text import Text
 from rich import box
 
 from dam import __version__
+from dam.core.deprecation import DeprecationChecker, DeprecationStatus, DeprecationSeverity
 from dam.core.drift import DriftDetector, DriftReport
+from dam.core.exporter import Exporter, FORMATS
+from dam.core.importer import Importer, ImportStatus
 from dam.core.inspector import ContainerConfig, Inspector
 from dam.core.pruner import Pruner
 from dam.core.snapshot import SnapshotManager
@@ -122,6 +125,9 @@ MENU_OPTIONS = [
     ("4", "Prune",    "Remove unused images"),
     ("5", "Snapshots","Browse and manage saved snapshots"),
     ("6", "Settings", "View platform info and configuration"),
+    ("7", "Export",   "Export container configs (dam-yaml / docker-run / compose)"),
+    ("8", "Import",   "Import and recreate containers from a DAM YAML file"),
+    ("9", "EOL Check","Check for deprecated or archived images"),
     ("q", "Quit",     "Exit DAM"),
 ]
 
@@ -518,7 +524,7 @@ class DAMTui:
 
             choice = Prompt.ask(
                 "[bold cyan]Select action[/bold cyan]",
-                choices=["1", "2", "3", "4", "5", "6", "q"],
+                choices=["1", "2", "3", "4", "5", "6", "7", "8", "9", "q"],
                 default="1",
             ).strip().lower()
 
@@ -536,6 +542,12 @@ class DAMTui:
                 self._action_snapshots()
             elif choice == "6":
                 self._action_settings()
+            elif choice == "7":
+                self._action_export()
+            elif choice == "8":
+                self._action_import()
+            elif choice == "9":
+                self._action_eol_check()
             elif choice == "q":
                 console.print("[bold cyan]Goodbye.[/bold cyan]")
                 break
@@ -865,6 +877,278 @@ class DAMTui:
             ))
         except Exception:
             pass
+
+        Prompt.ask("\n[dim]Press Enter to continue[/dim]", default="")
+
+
+    # ------------------------------------------------------------
+    # Action: Export
+    # ------------------------------------------------------------
+
+    def _action_export(self) -> None:
+        console.print(Rule("[bold cyan]Export Containers[/bold cyan]"))
+
+        # Inspect containers
+        with console.status("[cyan]Inspecting containers...[/cyan]"):
+            try:
+                inspector = self._make_inspector()
+                configs = inspector.inspect_all(
+                    settings_containers=self.settings.get("containers", {}) or {}
+                )
+            except RuntimeError as e:
+                console.print(f"[bold red]Error:[/bold red] {e}")
+                return
+
+        if not configs:
+            console.print("[yellow]No containers found.[/yellow]")
+            Prompt.ask("\n[dim]Press Enter to continue[/dim]", default="")
+            return
+
+        # --- Select containers ---
+        console.print("\nAvailable containers:")
+        for i, cfg in enumerate(sorted(configs, key=lambda c: c.name), 1):
+            console.print(f"  [cyan]{i}[/cyan]. {cfg.name}  [dim]({cfg.image})[/dim]")
+
+        console.print()
+        selection = Prompt.ask(
+            "Select containers [all / comma-separated numbers e.g. 1,3]",
+            default="all"
+        )
+
+        sorted_configs = sorted(configs, key=lambda c: c.name)
+        if selection.strip().lower() == "all":
+            selected = sorted_configs
+        else:
+            try:
+                indices = [int(x.strip()) - 1 for x in selection.split(",")]
+                selected = [sorted_configs[i] for i in indices if 0 <= i < len(sorted_configs)]
+            except (ValueError, IndexError):
+                console.print("[red]Invalid selection.[/red]")
+                Prompt.ask("\n[dim]Press Enter to continue[/dim]", default="")
+                return
+
+        if not selected:
+            console.print("[yellow]No containers selected.[/yellow]")
+            Prompt.ask("\n[dim]Press Enter to continue[/dim]", default="")
+            return
+
+        # --- Select format ---
+        console.print()
+        console.print("Export format:")
+        console.print("  [cyan][1][/cyan] dam-yaml    — DAM import file (recommended for backup/migration)")
+        console.print("  [cyan][2][/cyan] docker-run  — Executable shell script (works anywhere without DAM)")
+        console.print("  [cyan][3][/cyan] compose     — docker-compose.yml")
+        console.print("  [cyan][4][/cyan] All formats")
+        console.print()
+
+        fmt_choice = Prompt.ask("Select format", choices=["1", "2", "3", "4"], default="1")
+        fmt_map = {"1": "dam-yaml", "2": "docker-run", "3": "compose"}
+
+        # --- Output directory ---
+        default_out = str(Path.home() / "dam-exports")
+        out_dir_str = Prompt.ask("Output directory", default=default_out)
+        out_dir = Path(out_dir_str).expanduser()
+
+        # --- Export ---
+        console.print()
+        exporter = Exporter()
+        try:
+            if fmt_choice == "4":
+                results = exporter.export_all_formats(selected, out_dir)
+                console.print(Panel(
+                    "\n".join(
+                        f"[cyan]{fmt}[/cyan]  →  {paths[0]}"
+                        for fmt, paths in results.items()
+                    ),
+                    title="[bold green]✓ Exported — All Formats[/bold green]",
+                    border_style="green",
+                ))
+            else:
+                fmt = fmt_map[fmt_choice]
+                single = len(selected) > 1
+                paths = exporter.export(selected, fmt, out_dir, single_file=single)
+                console.print(Panel(
+                    "\n".join(str(p) for p in paths),
+                    title=f"[bold green]✓ Exported — {fmt}[/bold green]",
+                    border_style="green",
+                ))
+        except Exception as e:
+            console.print(f"[bold red]Export failed:[/bold red] {e}")
+
+        Prompt.ask("\n[dim]Press Enter to continue[/dim]", default="")
+
+    # ------------------------------------------------------------
+    # Action: Import
+    # ------------------------------------------------------------
+
+    def _action_import(self) -> None:
+        console.print(Rule("[bold cyan]Import Containers[/bold cyan]"))
+
+        file_path_str = Prompt.ask("Path to DAM YAML export file")
+        file_path = Path(file_path_str).expanduser()
+
+        if not file_path.exists():
+            console.print(f"[red]File not found: {file_path}[/red]")
+            Prompt.ask("\n[dim]Press Enter to continue[/dim]", default="")
+            return
+
+        # Load and preview
+        try:
+            from dam.core.importer import load_import_file
+            meta, configs = load_import_file(file_path)
+        except Exception as e:
+            console.print(f"[bold red]Error reading file:[/bold red] {e}")
+            Prompt.ask("\n[dim]Press Enter to continue[/dim]", default="")
+            return
+
+        console.print(f"\n[dim]Exported: {meta.get('exported_at', 'unknown')}  "
+                     f"DAM version: {meta.get('dam_version', 'unknown')}[/dim]\n")
+        console.print(f"Found [bold]{len(configs)}[/bold] container(s) to import:")
+        for cfg in configs:
+            console.print(f"  [cyan]•[/cyan] {cfg.name}  [dim]({cfg.image})[/dim]")
+
+        console.print()
+        dry_run = Confirm.ask("Dry run first? (recommended)", default=True)
+        overwrite = Confirm.ask("Overwrite existing containers with same name?", default=False)
+        console.print()
+
+        importer = Importer(self.platform, dry_run=dry_run, overwrite=overwrite)
+        results = importer.import_configs(configs)
+
+        # Results table
+        table = Table(
+            title="Import Results",
+            box=box.ROUNDED,
+            header_style="bold cyan",
+            expand=True,
+        )
+        table.add_column("Container", style="bold white", min_width=16)
+        table.add_column("Result", min_width=10)
+        table.add_column("Image", style="dim", min_width=30, overflow="fold")
+        table.add_column("Error", style="red", min_width=20, overflow="fold")
+
+        status_colors = {
+            ImportStatus.CREATED:  "bold green",
+            ImportStatus.SKIPPED:  "dim",
+            ImportStatus.DRY_RUN:  "yellow",
+            ImportStatus.FAILED:   "bold red",
+        }
+        status_icons = {
+            ImportStatus.CREATED:  "✓",
+            ImportStatus.SKIPPED:  "–",
+            ImportStatus.DRY_RUN:  "◎",
+            ImportStatus.FAILED:   "✗",
+        }
+
+        for r in results:
+            color = status_colors.get(r.status, "white")
+            icon = status_icons.get(r.status, "?")
+            table.add_row(
+                r.container_name,
+                Text(f"{icon} {r.status.value}", style=color),
+                r.image,
+                r.error or "",
+            )
+
+        console.print(table)
+
+        summary = Importer.summarize(results)
+        if dry_run and summary["dry_run"] > 0:
+            console.print()
+            console.print("[yellow]Dry run complete — no containers were created.[/yellow]")
+            if Confirm.ask("Run actual import now?", default=False):
+                importer2 = Importer(self.platform, dry_run=False, overwrite=overwrite)
+                importer2.import_configs(configs)
+                console.print("[bold green]✓ Import complete.[/bold green]")
+
+        Prompt.ask("\n[dim]Press Enter to continue[/dim]", default="")
+
+    # ------------------------------------------------------------
+    # Action: EOL Check
+    # ------------------------------------------------------------
+
+    def _action_eol_check(self) -> None:
+        console.print(Rule("[bold cyan]Deprecated / EOL Image Check[/bold cyan]"))
+
+        with console.status("[cyan]Inspecting containers...[/cyan]"):
+            try:
+                inspector = self._make_inspector()
+                configs = inspector.inspect_all(
+                    settings_containers=self.settings.get("containers", {}) or {}
+                )
+            except RuntimeError as e:
+                console.print(f"[bold red]Error:[/bold red] {e}")
+                return
+
+        with console.status("[cyan]Checking deprecation database...[/cyan]"):
+            checker = DeprecationChecker()
+            results = checker.check_all(configs)
+
+        summary = checker.summary(results)
+        warnings = checker.warnings_only(results)
+
+        # Summary panel
+        grid = Table.grid(padding=(0, 3))
+        grid.add_column(justify="center")
+        grid.add_column(justify="center")
+        grid.add_column(justify="center")
+        grid.add_column(justify="center")
+        grid.add_column(justify="center")
+        grid.add_row(
+            Text(f"✓ {summary['ok']} ok",             style="bold green"),
+            Text(f"⚠ {summary['deprecated']} deprecated", style="yellow"),
+            Text(f"📦 {summary['archived']} archived",  style="yellow"),
+            Text(f"☠ {summary['eol']} EOL",            style="bold red"),
+            Text(f"{summary['total_checked']} checked", style="dim"),
+        )
+        border = "red" if summary["eol"] > 0 else                  "yellow" if (summary["deprecated"] + summary["archived"]) > 0 else "green"
+        console.print(Panel(grid, title="Deprecation Check Summary", border_style=border))
+        console.print()
+
+        if not warnings:
+            console.print(Panel(
+                Align.center(Text("✓ All images are current and actively maintained", style="bold green")),
+                border_style="green", padding=(1, 4),
+            ))
+        else:
+            # Warnings table
+            table = Table(
+                title="Deprecated / EOL Images Found",
+                box=box.ROUNDED,
+                header_style="bold cyan",
+                expand=True,
+                show_lines=True,
+            )
+            table.add_column("Container",   style="bold white", min_width=16)
+            table.add_column("Image",       style="dim",        min_width=28, overflow="fold")
+            table.add_column("Status",      min_width=12)
+            table.add_column("Reason",      min_width=30, overflow="fold")
+            table.add_column("Alternatives",min_width=24, overflow="fold")
+
+            status_colors = {
+                DeprecationStatus.DEPRECATED: "yellow",
+                DeprecationStatus.ARCHIVED:   "yellow",
+                DeprecationStatus.EOL:        "bold red",
+            }
+            status_icons = {
+                DeprecationStatus.DEPRECATED: "⚠",
+                DeprecationStatus.ARCHIVED:   "📦",
+                DeprecationStatus.EOL:        "☠",
+            }
+
+            for r in warnings:
+                color = status_colors.get(r.status, "white")
+                icon = status_icons.get(r.status, "?")
+                alts = ", ".join(a.name for a in r.alternatives) if r.alternatives else "—"
+                table.add_row(
+                    r.container_name,
+                    r.image,
+                    Text(f"{icon} {r.status.value}", style=color),
+                    r.reason or "—",
+                    alts,
+                )
+
+            console.print(table)
 
         Prompt.ask("\n[dim]Press Enter to continue[/dim]", default="")
 

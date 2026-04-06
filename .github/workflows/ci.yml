@@ -37,6 +37,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install fastapi uvicorn[standard] passlib[bcrypt]
 
       - name: Run tests
         run: |
@@ -45,6 +46,7 @@ jobs:
           python tests/test_drift.py
           python tests/test_tui.py
           python tests/test_daemon.py
+          python tests/test_exporter_importer_deprecation.py
 
       - name: Import smoke test
         run: |
@@ -57,6 +59,11 @@ jobs:
           from dam.core.drift import DriftDetector
           from dam.daemon.scheduler import parse_cron, validate_cron
           from dam.daemon.service import DaemonManager, DaemonState
+          from dam.web.auth import hash_password, verify_password
+          from dam.web.server import create_app
+          from dam.core.exporter import Exporter
+          from dam.core.importer import Importer
+          from dam.core.deprecation import DeprecationChecker
           print('All imports OK')
           "
 

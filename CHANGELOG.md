@@ -11,6 +11,83 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.4.0] — 2026-04-06
+
+### Added
+
+- **Web UI v0.4.0** — complete DockPeek feature parity + DAM-exclusive features
+- Live container log viewer — real-time SSE stream, follow toggle, last N lines
+- Start / Stop / Restart buttons per container in the dashboard
+- Search / filter bar — searches name, image, IP, network, ports, tags
+- Auto-refresh toggle — refreshes container list every 60 seconds
+- Dark / light mode toggle — persisted to localStorage
+- Clickable port links — http/https auto-detected (443/8443/9443 = HTTPS)
+- Container tag pills — reads `dockpeek.tags` / `dam.tags` labels
+- Clickable container names — reads `dockpeek.link` / `dam.link` labels
+- Extra ports display — reads `dockpeek.ports` / `dam.ports` labels
+- DAM self-update panel — checks GitHub releases API, shows version badge in sidebar
+  - git pull (if .git dir present) with zip download fallback
+  - Update available badge appears automatically in sidebar
+- `dam/web/dam_updater.py` — self-update module (git pull → zip fallback)
+- New API endpoints:
+  - `GET  /api/containers/{name}/logs?tail=N&follow=bool` — SSE log stream
+  - `POST /api/containers/{name}/start|stop|restart` — container lifecycle
+  - `GET  /api/dam/version` — check GitHub releases for latest version
+  - `POST /api/dam/update` — trigger self-update
+
+### Changed
+
+- Version bumped to 0.4.0
+- `server.py` fully rewritten with all new endpoints
+- `index.html` fully rewritten (721 lines, 20 features)
+
+---
+
+## [0.3.0] — 2026-04-06
+
+### Added
+
+- `dam/web/` — Full web UI (FastAPI + Alpine.js single-file SPA)
+  - Login with hashed password (sha256 fallback for QNAP)
+  - Dashboard: container table with status, IPs, EOL warnings
+  - Update: 3-step flow — select → dry run → confirm → live progress stream (SSE)
+  - Drift: visual diff table with severity color coding
+  - EOL Check: deprecated/archived/EOL image warnings with alternatives
+  - Prune: preview + confirm before removing images
+  - Export: checkbox picker + 3 format options + browser download
+  - Snapshots: list + view detail
+- `dam --web` — launch web UI (default: http://localhost:8080)
+- `dam --web --host 0.0.0.0 --port 8080` — bind to network (QNAP access from browser)
+- `dam --web-passwd` — interactive password setup, saves sha256 hash to settings.yaml
+- Web dependencies added to requirements.txt: fastapi, uvicorn, python-multipart, passlib
+
+### Changed
+
+- Version bumped to 0.3.0
+
+---
+
+## [0.2.0] — 2026-04-06
+
+### Added
+
+- `core/exporter.py` — export containers to 3 formats:
+  - `dam-yaml` — full config snapshot, re-importable by DAM on any host
+  - `docker-run` — executable `.sh` script, works anywhere without DAM
+  - `compose` — valid `docker-compose.yml`, single or full stack
+- `core/importer.py` — import from DAM YAML, recreate containers with dry-run and overwrite options
+- `core/deprecation.py` — checks containers against EOL/archived image database
+- `data/eol.yaml` — bundled community-maintained deprecated image database
+  - Includes: containrrr/watchtower (archived Dec 2025), portainer/portainer, ouroboros, linuxserver/letsencrypt, and more
+  - GitHub API support for detecting archived repositories (opt-in)
+- 58 new tests — total now 281/281
+
+### Changed
+
+- Version bumped to 0.2.0
+
+---
+
 ## [0.1.0] — 2026-04-05
 
 ### Added
@@ -62,5 +139,5 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-[Unreleased]: https://github.com/pawlisko80/docker-automation-manager/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/pawlisko80/docker-automation-manager/releases/tag/v0.1.0
+[Unreleased]: https://github.com/yourusername/docker-automation-manager/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/yourusername/docker-automation-manager/releases/tag/v0.1.0

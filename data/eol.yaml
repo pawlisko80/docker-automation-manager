@@ -1,0 +1,103 @@
+# Docker Automation Manager — EOL / Deprecated Image Database
+#
+# Community-maintained list of deprecated, archived, or end-of-life Docker images.
+# Pull requests welcome — see CONTRIBUTING.md for the format.
+#
+# Fields:
+#   image:         Full image reference (without tag)
+#   status:        deprecated | archived | eol
+#   reason:        Human-readable explanation
+#   archived_date: ISO date when repo was archived (for status: archived)
+#   eol_date:      ISO date when support ended (for status: eol)
+#   alternatives:  List of suggested replacements
+#     - name:      Image name or project name
+#       url:       Project URL (optional)
+#       note:      Migration notes (optional)
+
+deprecated:
+
+  # ----------------------------------------------------------------
+  # Archived projects
+  # ----------------------------------------------------------------
+
+  - image: containrrr/watchtower
+    status: archived
+    reason: "GitHub repository archived by maintainer in December 2025. No longer actively maintained."
+    archived_date: "2025-12-01"
+    alternatives:
+      - name: docker-automation-manager
+        url: https://github.com/pawlisko80/docker-automation-manager
+        note: "Supports QNAP/Synology static IPs, drift detection, dry-run mode"
+      - name: Tugtainer
+        url: https://github.com/tugtainer/tugtainer
+        note: "Notification-first approach — alerts you before updating"
+
+  - image: v2tec/watchtower
+    status: archived
+    reason: "Original Watchtower fork, superseded by containrrr/watchtower which is also now archived."
+    archived_date: "2019-01-01"
+    alternatives:
+      - name: docker-automation-manager
+        url: https://github.com/pawlisko80/docker-automation-manager
+
+  - image: pyouroboros/ouroboros
+    status: archived
+    reason: "Python predecessor to Watchtower, unmaintained since 2019."
+    archived_date: "2019-06-01"
+    alternatives:
+      - name: containrrr/watchtower
+        note: "Watchtower is the maintained successor (though also now archived)"
+      - name: docker-automation-manager
+        url: https://github.com/pawlisko80/docker-automation-manager
+
+  # ----------------------------------------------------------------
+  # Deprecated / renamed images
+  # ----------------------------------------------------------------
+
+  - image: linuxserver/heimdall
+    status: deprecated
+    reason: "Heimdall v2 introduced breaking config changes. Existing configs may not migrate cleanly."
+    alternatives:
+      - name: linuxserver/heimdall
+        note: "Still maintained — but review v2 migration guide before updating"
+      - name: linuxserver/dasherr
+        note: "Simpler alternative dashboard"
+
+  - image: portainer/portainer
+    status: deprecated
+    reason: "portainer/portainer (CE v1) is replaced by portainer/portainer-ce."
+    alternatives:
+      - name: portainer/portainer-ce
+        url: https://hub.docker.com/r/portainer/portainer-ce
+        note: "Current community edition — drop-in replacement"
+
+  - image: postgres
+    status: eol
+    reason: "PostgreSQL 11 and earlier are past end-of-life. Pin to postgres:16 or later."
+    eol_date: "2023-11-09"
+    alternatives:
+      - name: postgres:16
+        note: "Supported until 2028-11-08"
+      - name: postgres:17
+        note: "Latest major version"
+
+  # ----------------------------------------------------------------
+  # Legacy linuxserver images (renamed)
+  # ----------------------------------------------------------------
+
+  - image: linuxserver/letsencrypt
+    status: deprecated
+    reason: "Renamed to linuxserver/swag. letsencrypt image no longer receives updates."
+    alternatives:
+      - name: linuxserver/swag
+        url: https://hub.docker.com/r/linuxserver/swag
+        note: "Drop-in replacement with same functionality"
+
+  - image: linuxserver/nginx
+    status: deprecated
+    reason: "linuxserver/nginx is deprecated in favour of linuxserver/swag for reverse proxy use."
+    alternatives:
+      - name: linuxserver/swag
+        note: "Full reverse proxy stack with auto SSL"
+      - name: nginx
+        note: "Official nginx image for simple use cases"

@@ -41,3 +41,15 @@ daemon:
 
   # Send notification on completion (future feature)
   notify: false
+
+# Web UI settings
+web:
+  # Username for web UI login
+  username: admin
+  # SHA-256 hash of your password
+  # Generate with: python3 -c "import hashlib; print(hashlib.sha256(b'yourpassword').hexdigest())"
+  # Default below is hash of 'admin' — CHANGE THIS before exposing to network
+  password_hash: "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918"
+  # Bind host — use 0.0.0.0 to expose on network (e.g. for QNAP access)
+  host: "127.0.0.1"
+  port: 8080

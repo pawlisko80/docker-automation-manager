@@ -16,6 +16,8 @@ setup(
         "click>=8.0.0",
         "schedule>=1.2.0",
     ],
+    package_data={"dam": ["../data/*.yaml"]},
+    include_package_data=True,
     entry_points={
         "console_scripts": [
             "dam=dam.main:main",

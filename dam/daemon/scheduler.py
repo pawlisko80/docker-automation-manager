@@ -93,11 +93,11 @@ class CronExpression:
     Parsed and validated cron expression.
     """
     raw: str
-    minutes:      set[int]   # 0-59
-    hours:        set[int]   # 0-23
+    minutes: set[int]  # 0-59
+    hours: set[int]  # 0-23
     days_of_month: set[int]  # 1-31
-    months:       set[int]   # 1-12
-    days_of_week: set[int]   # 0-6 (0=Sunday)
+    months: set[int]  # 1-12
+    days_of_week: set[int]  # 0-6 (0=Sunday)
 
     @classmethod
     def parse(cls, expression: str) -> "CronExpression":

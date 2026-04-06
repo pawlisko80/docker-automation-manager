@@ -334,8 +334,8 @@ class DaemonManager:
             cron_path = Path(cron_path_str)
             if cron_path.exists():
                 try:
-                    lines = [ln for ln in cron_path.read_text().splitlines()
-                             if _CRON_MARKER not in ln]
+                    lines = [line for line in cron_path.read_text().splitlines()
+                             if _CRON_MARKER not in line]
                     cron_path.write_text("\n".join(lines) + "\n")
                     if isinstance(self.platform, QNAPPlatform):
                         self.platform.reload_cron()
