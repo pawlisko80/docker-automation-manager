@@ -326,8 +326,8 @@ class DaemonManager:
                 result = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
                 lines = [l for l in result.stdout.splitlines()
                          if _CRON_MARKER not in l]
-                subprocess.run(["crontab", "-"], input="\n".join(lines) + "\n",
-                                capture_output=True, text=True)
+                new_tab = "\n".join(lines) + "\n"
+                subprocess.run(["crontab", "-"], input=new_tab, capture_output=True, text=True)
             except Exception as e:
                 return {"success": False, "message": str(e)}
         else:
