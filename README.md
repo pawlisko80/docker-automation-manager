@@ -3,7 +3,7 @@
 Automated Docker container lifecycle manager with auto platform detection.
 Supports QNAP, Synology, and generic Linux Docker hosts.
 
-[![CI](https://github.com/yourusername/docker-automation-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/yourusername/docker-automation-manager/actions)
+[![CI](https://github.com/pawlisko80/docker-automation-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/pawlisko80/docker-automation-manager/actions)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -36,7 +36,7 @@ Supports QNAP, Synology, and generic Linux Docker hosts.
 ## Installation
 
 ```bash
-git clone https://github.com/yourusername/docker-automation-manager
+git clone https://github.com/pawlisko80/docker-automation-manager
 cd docker-automation-manager
 pip install -r requirements.txt
 pip install -e .
