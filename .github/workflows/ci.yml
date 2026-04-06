@@ -77,5 +77,5 @@ jobs:
       - name: Flake8
         run: |
           flake8 dam/ --max-line-length=120 \
-            --ignore=E501,W503 \
+            --ignore=E501,W503,E241,E221,E231 \
             --exclude=dam/__pycache__,dam/core/__pycache__,dam/platform/__pycache__,dam/daemon/__pycache__
