@@ -129,6 +129,13 @@ config/             settings.yaml
 
 ---
 
+## Deployment guides
+
+- [QNAP NAS](docs/QNAP_DEPLOYMENT.md) — Docker-based deployment, alias setup, cron automation
+- Synology — coming soon (contributions welcome)
+
+---
+
 ## Adding a new platform
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
