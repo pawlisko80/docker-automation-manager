@@ -84,13 +84,13 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
 .mh{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px}
 .mb2{flex:1;overflow-y:auto}
 .abtns{display:flex;gap:4px}
-[]{display:none!important}
+[x-cloak]{display:none!important}
 </style>
 </head>
 <body>
 
 <!-- LOGIN -->
-<div class="lw" x-show="!auth" style="display:flex">
+<div class="lw" x-show="!auth" x-cloak>
   <div class="lb">
     <h1>🐳 DAM</h1>
     <p>Docker Automation Manager</p>
@@ -105,7 +105,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
 </div>
 
 <!-- APP -->
-<div class="app" x-show="auth" style="display:none">
+<div class="app" x-show="auth" x-cloak>
   <div class="sidebar">
     <div class="logo"><h1>🐳 DAM</h1><p>v<span x-text="ver"></span></p></div>
     <nav class="nav">
@@ -214,7 +214,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
     </div>
 
     <!-- LOG MODAL -->
-    <div class="mov" x-show="lm.open" @click.self="closeLog()">
+    <div class="mov" x-show="lm.open" x-cloak @click.self="closeLog()">
       <div class="modal">
         <div class="mh">
           <i class="fa fa-file-lines" style="color:var(--accent)"></i>
