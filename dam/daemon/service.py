@@ -224,8 +224,8 @@ class DaemonManager:
             existing = cron_path.read_text() if cron_path.exists() else ""
             # Remove any existing DAM cron entry
             lines = [
-                l for l in existing.splitlines()
-                if _CRON_MARKER not in l
+                ln for ln in existing.splitlines()
+                if _CRON_MARKER not in ln
             ]
             lines.append(cron_line.rstrip())
             cron_path.write_text("\n".join(lines) + "\n")
@@ -324,8 +324,8 @@ class DaemonManager:
         if cron_path_str == "crontab":
             try:
                 result = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
-                lines = [l for l in result.stdout.splitlines()
-                         if _CRON_MARKER not in l]
+                lines = [ln for ln in result.stdout.splitlines()
+                         if _CRON_MARKER not in ln]
                 new_tab = "\n".join(lines) + "\n"
                 subprocess.run(["crontab", "-"], input=new_tab, capture_output=True, text=True)
             except Exception as e:
@@ -335,7 +335,7 @@ class DaemonManager:
             if cron_path.exists():
                 try:
                     lines = [ln for ln in cron_path.read_text().splitlines()
-                             if _CRON_MARKER not in ln]
+                             if _CRON_MARKER not in lnn]
                     cron_path.write_text("\n".join(lines) + "\n")
                     if isinstance(self.platform, QNAPPlatform):
                         self.platform.reload_cron()
