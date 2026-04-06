@@ -1,0 +1,43 @@
+# Docker Automation Manager - Settings
+# Location: config/settings.yaml
+#
+# version_strategy per container:
+#   latest  - always pull :latest tag
+#   stable  - pull :stable tag (falls back to :latest if not available)
+#   pinned  - lock to a specific image digest (never auto-update)
+
+dam:
+  # Snapshot retention: number of snapshots to keep before rotating
+  snapshot_retention: 10
+
+  # Log retention in days
+  log_retention_days: 30
+
+  # Prune unused images after successful updates
+  auto_prune: true
+
+  # Pause between container recreations (seconds)
+  # Gives dependent containers time to start before next one
+  recreate_delay: 5
+
+# Per-container version strategy overrides.
+# If a container is not listed here, 'latest' is used by default.
+containers: {}
+
+# Example overrides:
+# containers:
+#   homeassistant:
+#     version_strategy: stable
+#   esphome:
+#     version_strategy: latest
+#   nut:
+#     version_strategy: pinned
+#     pinned_digest: sha256:edadf0d18b7e240fba0e4073dfcc13f19f93839de0656f4b39752c0cad880cd5
+
+# Daemon / scheduler settings
+daemon:
+  # Cron expression for automated runs (default: 2am on the 1st of each month)
+  schedule: "0 2 1 * *"
+
+  # Send notification on completion (future feature)
+  notify: false

@@ -1,0 +1,17 @@
+# Docker Automation Manager - Python dependencies
+
+# Docker SDK
+docker>=7.0.0
+
+# Terminal UI
+rich>=13.0.0
+prompt_toolkit>=3.0.0
+
+# Config & serialization
+pyyaml>=6.0
+
+# CLI framework
+click>=8.0.0
+
+# Scheduling (daemon mode)
+schedule>=1.2.0
