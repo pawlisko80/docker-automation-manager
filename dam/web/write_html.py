@@ -12,7 +12,7 @@ HTML = """\
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Docker Automation Manager</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/alpinejs/3.13.5/cdn.min.js" defer></script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<link rel="stylesheet" href="/static/fa.min.css">
 <style>
 :root{--bg:#0f1117;--bg2:#1a1d2e;--bg3:#242842;--border:#2e3256;--accent:#4f8ef7;--accent2:#7c5cfc;--green:#22c55e;--yellow:#f59e0b;--red:#ef4444;--dim:#6b7280;--text:#e2e8f0;--text2:#94a3b8}
 .light{--bg:#f8fafc;--bg2:#fff;--bg3:#f1f5f9;--border:#e2e8f0;--accent:#2563eb;--accent2:#7c3aed;--green:#16a34a;--yellow:#d97706;--red:#dc2626;--dim:#94a3b8;--text:#1e293b;--text2:#64748b}
@@ -92,13 +92,13 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
 .mh{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px}
 .mb2{flex:1;overflow-y:auto}
 .abtns{display:flex;gap:4px}
-[x-cloak]{display:none!important}
+[x-cloak]{display:none}
 </style>
 </head>
 <body>
 
 <!-- LOGIN -->
-<div class="lw" x-show="!auth" x-cloak>
+<div class="lw" x-show="!auth" style="display:flex">
   <div class="lb">
     <h1>🐳 DAM</h1>
     <p>Docker Automation Manager</p>
@@ -113,7 +113,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
 </div>
 
 <!-- APP -->
-<div class="app" x-show="auth" x-cloak>
+<div class="app" x-show="auth" style="display:none">
   <div class="sidebar">
     <div class="logo"><h1>🐳 DAM</h1><p>v<span x-text="ver"></span></p></div>
     <nav class="nav">
@@ -222,7 +222,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
     </div>
 
     <!-- LOG MODAL -->
-    <div class="mov" x-show="lm.open" x-cloak @click.self="closeLog()">
+    <div class="mov" x-show="lm.open" @click.self="closeLog()">
       <div class="modal">
         <div class="mh">
           <i class="fa fa-file-lines" style="color:var(--accent)"></i>
@@ -677,7 +677,7 @@ async doUpdate(){
         this.ulog.push({t:(ok?'✓':'–')+' '+msg.container+': '+msg.status+(msg.error?' — '+msg.error:''),c:ok?'done':(msg.status==='failed'?'err':'')});
       }else if(msg.type==='done'){
         this.usum=msg.summary;
-        this.ulog.push({t:'\n✓ Done — '+msg.summary.updated+' updated, '+msg.summary.skipped+' skipped, '+msg.summary.failed+' failed',c:'done'});
+        this.ulog.push({t:'\\n\u2713 Done — '+msg.summary.updated+' updated, '+msg.summary.skipped+' skipped, '+msg.summary.failed+' failed',c:'done'});
         this.ld.upd=false;es.close();this.loadC();
       }else if(msg.type==='error'){this.ulog.push({t:'✗ Error: '+msg.message,c:'err'});this.ld.upd=false;es.close();}
       const lg=document.getElementById('ulg');if(lg)lg.scrollTop=lg.scrollHeight;

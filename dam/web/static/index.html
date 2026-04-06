@@ -1,10 +1,9 @@
 <!DOCTYPE html>
-<html lang="en" x-data="dam()" x-init="init()" :class="darkMode?'':'light'">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Docker Automation Manager</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/alpinejs/3.13.5/cdn.min.js" defer></script>
 <link rel="stylesheet" href="/static/fa.min.css">
 <style>
 :root{--bg:#0f1117;--bg2:#1a1d2e;--bg3:#242842;--border:#2e3256;--accent:#4f8ef7;--accent2:#7c5cfc;--green:#22c55e;--yellow:#f59e0b;--red:#ef4444;--dim:#6b7280;--text:#e2e8f0;--text2:#94a3b8}
@@ -88,7 +87,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
 [x-cloak]{display:none}
 </style>
 </head>
-<body>
+<body x-data="dam()" x-init="init()">
 
 <!-- LOGIN -->
 <div class="lw" x-show="!auth" style="display:flex">
@@ -670,7 +669,7 @@ async doUpdate(){
         this.ulog.push({t:(ok?'✓':'–')+' '+msg.container+': '+msg.status+(msg.error?' — '+msg.error:''),c:ok?'done':(msg.status==='failed'?'err':'')});
       }else if(msg.type==='done'){
         this.usum=msg.summary;
-        this.ulog.push({t:'\n\u2713 Done — '+msg.summary.updated+' updated, '+msg.summary.skipped+' skipped, '+msg.summary.failed+' failed',c:'done'});
+        this.ulog.push({t:'\n✓ Done — '+msg.summary.updated+' updated, '+msg.summary.skipped+' skipped, '+msg.summary.failed+' failed',c:'done'});
         this.ld.upd=false;es.close();this.loadC();
       }else if(msg.type==='error'){this.ulog.push({t:'✗ Error: '+msg.message,c:'err'});this.ld.upd=false;es.close();}
       const lg=document.getElementById('ulg');if(lg)lg.scrollTop=lg.scrollHeight;
