@@ -15,8 +15,6 @@ Design goals:
 
 from __future__ import annotations
 
-import re
-from dataclasses import dataclass, field
 from typing import Optional
 
 import docker
@@ -131,6 +129,7 @@ _RUNTIME_ENV_PREFIXES = (
     "CI=true",               # injected by some images
     "NEXT_TELEMETRY_DISABLED=",
 )
+
 
 def _is_runtime_env(var: str) -> bool:
     """Return True if this env var is injected by the base image, not the user."""

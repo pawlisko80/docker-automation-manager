@@ -23,7 +23,6 @@ the core update/prune pipeline without spawning subprocesses.
 from __future__ import annotations
 
 import json
-import os
 import signal
 import subprocess
 import sys
@@ -33,7 +32,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from dam.daemon.scheduler import CronExpression, parse_cron, validate_cron
+from dam.daemon.scheduler import parse_cron, validate_cron
 from dam.platform.base import BasePlatform
 
 
@@ -177,7 +176,7 @@ class DaemonManager:
             return {
                 "success": False,
                 "method": "systemd",
-                "message": f"Permission denied writing to /etc/systemd/system/. Run as root.",
+                "message": "Permission denied writing to /etc/systemd/system/. Run as root.",
             }
 
         # Reload and enable
@@ -257,7 +256,7 @@ class DaemonManager:
             )
             existing = result.stdout if result.returncode == 0 else ""
 
-            lines = [l for l in existing.splitlines() if _CRON_MARKER not in l]
+            lines = [ln for ln in existing.splitlines() if _CRON_MARKER not in ln]
             lines.append(cron_line.rstrip())
             new_crontab = "\n".join(lines) + "\n"
 
@@ -335,8 +334,8 @@ class DaemonManager:
             cron_path = Path(cron_path_str)
             if cron_path.exists():
                 try:
-                    lines = [l for l in cron_path.read_text().splitlines()
-                             if _CRON_MARKER not in l]
+                    lines = [ln for ln in cron_path.read_text().splitlines()
+                             if _CRON_MARKER not in ln]
                     cron_path.write_text("\n".join(lines) + "\n")
                     if isinstance(self.platform, QNAPPlatform):
                         self.platform.reload_cron()
@@ -399,6 +398,7 @@ class DaemonManager:
 
         # Graceful shutdown on SIGTERM/SIGINT
         self._running = True
+
         def _handle_signal(sig, frame):
             self._running = False
         signal.signal(signal.SIGTERM, _handle_signal)

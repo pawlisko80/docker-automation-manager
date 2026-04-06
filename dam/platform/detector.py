@@ -16,7 +16,6 @@ expected config files in unusual setups.
 """
 
 import os
-import subprocess
 from typing import Optional
 
 from .base import BasePlatform

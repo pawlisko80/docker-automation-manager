@@ -24,14 +24,13 @@ Design goals:
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional, Callable
 
 import docker
 from docker.errors import DockerException, ImageNotFound, NotFound
 
-from dam.core.inspector import ContainerConfig, PortBinding, DeviceMapping
+from dam.core.inspector import ContainerConfig
 from dam.platform.base import BasePlatform
 
 

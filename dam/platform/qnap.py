@@ -34,8 +34,8 @@ class QNAPPlatform(BasePlatform):
             return driver.lower() in _STATIC_IP_DRIVERS
         # Fallback: guess from name
         name_lower = network_name.lower()
-        return any(hint in name_lower for hint in _QNET_HINTS) or \
-               name_lower in {"macvlan_network", "macvlan"}
+        return (any(hint in name_lower for hint in _QNET_HINTS)
+                or name_lower in {"macvlan_network", "macvlan"})
 
     def get_network_driver(self, network_name: str) -> Optional[str]:
         if network_name in self._network_driver_cache:

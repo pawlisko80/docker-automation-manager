@@ -34,7 +34,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
-from dam.core.inspector import ContainerConfig, NetworkConfig
+from dam.core.inspector import ContainerConfig
 
 
 # ------------------------------------------------------------

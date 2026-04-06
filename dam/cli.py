@@ -295,7 +295,7 @@ def _cmd_install_daemon(config: Optional[str]) -> None:
     daemon_cfg = settings.get("daemon", {})
     schedule = daemon_cfg.get("schedule", "0 2 1 * *")
 
-    console.print(f"[bold cyan]Installing DAM daemon[/bold cyan]")
+    console.print("[bold cyan]Installing DAM daemon[/bold cyan]")
     console.print(f"Platform:  [cyan]{platform.name}[/cyan]")
     console.print(f"Schedule:  [cyan]{schedule}[/cyan]")
     console.print()
@@ -328,8 +328,8 @@ def _install_cron(platform, cron_line: str) -> None:
 
         if "dam" in existing and "--update" in existing:
             console.print("[yellow]Existing DAM cron entry found — replacing.[/yellow]")
-            lines = [l for l in existing.splitlines()
-                     if not ("dam" in l and "--update" in l)]
+            lines = [ln for ln in existing.splitlines()
+                     if not ("dam" in ln and "--update" in ln)]
             existing = "\n".join(lines) + "\n"
 
         with open(cron_path, "a") as f:

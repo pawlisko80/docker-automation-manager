@@ -26,7 +26,6 @@ pure stdlib datetime arithmetic so it works on QNAP's minimal Python.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Optional
@@ -118,11 +117,11 @@ class CronExpression:
         try:
             return cls(
                 raw=expression,
-                minutes=      _expand_field(minute_str, 0, 59),
-                hours=        _expand_field(hour_str,   0, 23),
-                days_of_month=_expand_field(dom_str,    1, 31),
-                months=       _expand_field(month_str,  1, 12),
-                days_of_week= _normalize_dow(_expand_field(dow_str, 0, 7)),
+                minutes=_expand_field(minute_str, 0, 59),
+                hours=_expand_field(hour_str, 0, 23),
+                days_of_month=_expand_field(dom_str, 1, 31),
+                months=_expand_field(month_str, 1, 12),
+                days_of_week=_normalize_dow(_expand_field(dow_str, 0, 7)),
             )
         except (ValueError, TypeError) as e:
             raise ValueError(f"Invalid cron expression '{expression}': {e}")

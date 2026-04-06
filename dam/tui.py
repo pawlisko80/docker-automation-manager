@@ -14,10 +14,6 @@ Dependencies: rich, prompt_toolkit
 
 from __future__ import annotations
 
-import os
-import sys
-import time
-import traceback
 from pathlib import Path
 from typing import Optional
 
@@ -25,8 +21,6 @@ import yaml
 from rich.align import Align
 from rich.columns import Columns
 from rich.console import Console
-from rich.layout import Layout
-from rich.live import Live
 from rich.panel import Panel
 from rich.progress import (
     BarColumn,
@@ -43,13 +37,13 @@ from rich.text import Text
 from rich import box
 
 from dam import __version__
-from dam.core.drift import DriftDetector, DriftReport, DriftItem, DriftSeverity
+from dam.core.drift import DriftDetector, DriftReport
 from dam.core.inspector import ContainerConfig, Inspector
 from dam.core.pruner import Pruner
 from dam.core.snapshot import SnapshotManager
 from dam.core.updater import Updater, UpdateResult, UpdateStatus
 from dam.platform.base import BasePlatform
-from dam.platform.detector import detect_platform, get_platform_info
+from dam.platform.detector import detect_platform
 
 
 # ------------------------------------------------------------
@@ -130,6 +124,7 @@ MENU_OPTIONS = [
     ("6", "Settings", "View platform info and configuration"),
     ("q", "Quit",     "Exit DAM"),
 ]
+
 
 def render_menu() -> Panel:
     """Render the main navigation menu."""
