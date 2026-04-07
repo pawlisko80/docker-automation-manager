@@ -12,201 +12,164 @@ Includes a Rich terminal TUI, headless CLI, and a full web UI.
 
 ## Features
 
-- 🔍 **Auto-detects** host platform (QNAP, Synology, Generic Linux) at runtime
-- 📸 **Snapshots** full container config to YAML before every update — rollback-ready
+- 🔍 **Platform auto-detection** — QNAP, Synology, Generic Linux at runtime
+- 📸 **Snapshots** — full container config saved to YAML before every update
 - 🔄 **Smart updates** — digest compare, only recreates containers that actually changed
+- 🌐 **Static IP preservation** — macvlan / qnet networks survive container recreation
 - 📊 **Drift detection** — 5-level severity diff between live state and last snapshot
 - 📦 **Export** — container configs as DAM YAML, shell script, or docker-compose
 - 📥 **Import** — recreate containers from a DAM YAML export on any host
 - ⚠️  **EOL detection** — warns when images are deprecated, archived, or end-of-life
-- 🌐 **Web UI** — full dashboard with logs, start/stop/restart, search, dark/light mode
+- 🌐 **Web UI** — full dashboard with port links, log viewer, import, settings
 - 🖥️  **Rich TUI** — color-coded tables, progress bars, 9-option interactive menu
-- ⚙️  **Daemon mode** — install as cron job or systemd unit for automated runs
+- ⚙️  **Daemon mode** — cron job or systemd unit for automated runs
 - 🗑️  **Auto-prune** — removes unused images after successful updates
-- 📌 **Version pinning** — per-container strategy: `latest`, `stable`, or pinned digest
-- 🔁 **Self-updater** — web UI can update DAM itself via git pull or GitHub zip download
+- 📌 **Version pinning** — per-container: `latest`, `stable`, or pinned digest
+- 🔁 **Self-updater** — web UI can update DAM itself via git pull or zip download
 - 🧪 **281 tests** — fully mocked, no live Docker daemon required
 
 ---
 
-## Web UI (v0.3.0+)
+## Quick Start
 
-Start the web UI with one command:
-
-```bash
-dam --web-passwd          # set username + password once
-dam --web                 # launch at http://localhost:8080
-dam --web --host 0.0.0.0  # bind to all interfaces (network access)
-```
-
-### Web UI features (v0.4.0)
-
-| Feature | Description |
-|---------|-------------|
-| Dashboard | Container table with status, IPs, port links, tag pills |
-| Clickable ports | Auto-detects http/https — 443/8443/9443 → HTTPS |
-| Clickable names | Via `dam.link` / `dockpeek.link` container labels |
-| Tag pills | Via `dam.tags` / `dockpeek.tags` labels |
-| Log viewer | Real-time SSE stream per container, live follow toggle |
-| Start/Stop/Restart | Per-container action buttons in dashboard |
-| Search/filter | Searches name, image, IP, network, tags, ports |
-| Auto-refresh | Refreshes container list every 60 seconds |
-| Dark / Light mode | Toggle persisted to localStorage |
-| Update flow | Select → dry run → confirm → live progress stream |
-| Drift detection | Visual diff table with severity color coding |
-| EOL check | Deprecated/archived/EOL warnings with alternatives |
-| Export | Format picker + browser file download |
-| Snapshots | List and view saved snapshots |
-| DAM self-update | Version badge in sidebar, git pull → zip fallback |
-
-### DockPeek label compatibility
-
-DAM reads the same labels as DockPeek — no migration needed:
-
-```yaml
-labels:
-  - "dockpeek.tags=homeautomation,iot"
-  - "dockpeek.link=http://homeassistant.local:8123"
-  - "dockpeek.ports=8123,9090"
-  # DAM-native aliases also work:
-  - "dam.tags=homeautomation,iot"
-  - "dam.link=http://homeassistant.local:8123"
-```
-
----
-
-## Supported platforms
-
-| Platform       | Networks               | Paths                    | Daemon          |
-|----------------|------------------------|--------------------------|-----------------|
-| QNAP NAS       | macvlan, qnet (static) | /share/Container         | crontab         |
-| Synology NAS   | macvlan, bridge        | /volume1/docker          | systemd / cron  |
-| Generic Linux  | macvlan, ipvlan        | /opt/docker              | systemd / cron.d|
-| macOS          | bridge                 | ~/docker                 | launchd / cron  |
-
----
-
-## Installation
-
-### Generic Linux / macOS (Python 3.9+)
+### Install
 
 ```bash
-git clone https://github.com/pawlisko80/docker-automation-manager
-cd docker-automation-manager
-pip install -r requirements.txt
 pip install -e .
+```
+
+### Terminal TUI
+
+```bash
 dam
 ```
 
-### QNAP NAS
-
-QNAP ships with Python 2.7/3.7 — both too old. DAM runs inside Docker instead:
+### Web UI
 
 ```bash
-# Copy DAM to your QNAP
-scp docker-automation-manager-v0.4.0.zip admin@YOUR_QNAP_IP:/share/Container/
+dam --web-passwd              # set username + password (first time)
+dam --web                     # http://localhost:8080
+dam --web --host 0.0.0.0      # accessible from your network
+dam --web --host 0.0.0.0 --port 8090
+```
 
-# SSH in, unzip
-ssh admin@YOUR_QNAP_IP
-cd /share/Container && unzip docker-automation-manager-v0.4.0.zip
+### CLI (headless / scripting)
 
-# Run TUI (interactive terminal)
-docker run -it --rm \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -v /share/Container/docker-automation-manager:/app \
-  -w /app python:3.11-slim \
-  bash -c "pip install -r requirements.txt -q --root-user-action=ignore \
-           --disable-pip-version-check && pip install -e . -q \
-           --root-user-action=ignore --disable-pip-version-check && dam"
+```bash
+dam --status                  # show all containers
+dam --update                  # pull + recreate changed containers
+dam --update --dry-run        # preview only
+dam --drift                   # compare live vs last snapshot
+dam --export --format dam-yaml
+dam --eol-check               # exits 3 if deprecated images found
+```
 
-# Run Web UI (persistent, accessible from browser)
+---
+
+## Web UI (v0.4.0)
+
+### Dashboard
+
+| Column | Source |
+|--------|--------|
+| Container name | Clickable → service web UI (auto-resolved IP + port) |
+| Image | Full image reference |
+| Status | running / exited / paused |
+| IP / Network | Static IP for macvlan containers, network name |
+| Ports | Published ports (clickable) + auto-detected service ports |
+| Tags | `dam.tags` / `dockpeek.tags` container labels |
+| Actions | Logs · Start · Stop · Restart |
+
+### Port auto-detection (for macvlan/host containers without published ports)
+
+DAM resolves service ports in priority order:
+
+1. `dam.ports` or `dockpeek.ports` label on the container
+2. Environment variable — `WEB_PORT`, `HTTP_PORT`, `PORT`, `APP_PORT`, etc.
+3. `ExposedPorts` from the Docker image config
+4. Well-known image name map (homeassistant → 8123, grafana → 3000, etc.)
+
+### Container labels
+
+```bash
+# Custom link (overrides auto-link)
+--label dam.link=https://myapp.local
+
+# Port hint (when auto-detection isn't enough)
+--label dam.ports=8080
+
+# Tag pills shown in dashboard
+--label dam.tags=media,arr
+
+# All dockpeek.* labels also supported
+--label dockpeek.link=http://10.0.0.5:8096
+--label dockpeek.tags=media
+--label dockpeek.ports=8096
+```
+
+### Pages
+
+| Page | Description |
+|------|-------------|
+| Dashboard | Container table, search/filter, start/stop/restart, log viewer |
+| Update | Select containers → dry run → live update with SSE progress |
+| Drift | Compare live state vs last snapshot |
+| EOL Check | Deprecated/archived image warnings |
+| Prune | Preview + remove unused images |
+| Export | Select containers + format → download file |
+| Snapshots | List snapshots, view detail, **take snapshot** |
+| Import | Paste DAM YAML → preview → dry run → live import |
+| Settings | Platform info, Docker info, DAM config, change password |
+
+---
+
+## QNAP Deployment
+
+Run DAM as a persistent Docker container on QNAP:
+
+```bash
 docker run -d --name dam-web \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /share/Container/docker-automation-manager:/app \
-  -p 8080:8080 -w /app python:3.11-slim \
+  -p 8090:8090 -w /app python:3.11-slim \
   bash -c "pip install -r requirements.txt -q --root-user-action=ignore \
-           --disable-pip-version-check && pip install -e . -q \
-           --root-user-action=ignore --disable-pip-version-check \
-           && dam --web --host 0.0.0.0"
-
-# Then open: http://YOUR_QNAP_IP:8080
+  --disable-pip-version-check && pip install -e . -q \
+  --root-user-action=ignore --disable-pip-version-check \
+  && dam --web --host 0.0.0.0 --port 8090"
 ```
 
-> See [docs/QNAP_DEPLOYMENT.md](docs/QNAP_DEPLOYMENT.md) for the full guide including alias setup and cron automation.
-
----
-
-## Quick start
+**First-time password setup** (run once after container starts):
 
 ```bash
-# Interactive TUI
-dam
-
-# Headless CLI
-dam --status                                    # container status table
-dam --update --dry-run                          # preview updates, no changes
-dam --update                                    # full update cycle
-dam --drift                                     # drift check vs last snapshot
-dam --prune                                     # prune unused images
-
-# Export / Import
-dam --export                                    # interactive picker
-dam --export --format docker-run --container homeassistant
-dam --export --all --format compose --output ~/backups/
-dam --import-file homeassistant.dam.yaml --dry-run
-
-# EOL check (exits 3 if any deprecated/archived/EOL found)
-dam --eol-check
-
-# Web UI
-dam --web-passwd                                # set password (first time)
-dam --web                                       # http://localhost:8080
-dam --web --host 0.0.0.0 --port 8080           # network-accessible
-
-# Daemon
-dam --install-daemon                            # monthly cron job
+docker exec -it dam-web dam --web-passwd
 ```
 
----
-
-## TUI Menu
-
-```
-[1]  Status      Show all containers with current state
-[2]  Update      Pull latest images and recreate changed containers
-[3]  Drift       Compare current state against last snapshot
-[4]  Prune       Remove unused images
-[5]  Snapshots   Browse and manage saved snapshots
-[6]  Settings    View platform info and configuration
-[7]  Export      Export configs (dam-yaml / docker-run / compose)
-[8]  Import      Recreate containers from a DAM YAML file
-[9]  EOL Check   Check for deprecated or archived images
-[q]  Quit
-```
-
----
-
-## Export formats
-
-| Format       | File                  | Use case                                |
-|--------------|-----------------------|-----------------------------------------|
-| `dam-yaml`   | `<name>.dam.yaml`     | Backup + re-import on any DAM host      |
-| `docker-run` | `<name>.sh`           | Executable script — works without DAM  |
-| `compose`    | `<name>.compose.yml`  | Migrate to Docker Compose               |
-
----
-
-## EOL / Deprecation detection
-
-DAM ships a bundled `data/eol.yaml` database. Community PRs welcome.
+**Updating DAM on QNAP:**
 
 ```bash
-dam --eol-check          # CLI
-# Or use the EOL Check page in the web UI
+cd /share/Container
+wget -q -O dam.zip https://github.com/pawlisko80/docker-automation-manager/archive/refs/tags/v0.4.0.zip
+cp docker-automation-manager/config/settings.yaml /tmp/settings.yaml.bak
+unzip -o dam.zip
+cp -r docker-automation-manager-0.4.0/. docker-automation-manager/
+cp /tmp/settings.yaml.bak docker-automation-manager/config/settings.yaml
+rm -rf docker-automation-manager-0.4.0 dam.zip
+docker restart dam-web
 ```
 
-Current entries: `containrrr/watchtower` (archived Dec 2025), `portainer/portainer`,
-`pyouroboros/ouroboros`, `linuxserver/letsencrypt` → swag, postgres EOL versions, and more.
+### Static files for restricted networks
+
+If your QNAP blocks CDN access, serve Alpine.js and Font Awesome locally:
+
+```bash
+# Download once
+wget -q -O /share/Container/docker-automation-manager/dam/web/static/alpine.min.js \
+  https://cdnjs.cloudflare.com/ajax/libs/alpinejs/3.13.5/cdn.min.js
+wget -q -O /share/Container/docker-automation-manager/dam/web/static/fa.min.css \
+  "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
+```
+
+DAM's web server automatically serves these from `/static/` if present.
 
 ---
 
@@ -215,160 +178,115 @@ Current entries: `containrrr/watchtower` (archived Dec 2025), `portainer/portain
 `config/settings.yaml`:
 
 ```yaml
-dam:
-  snapshot_retention: 10
-  auto_prune: true
-  recreate_delay: 5
-
-containers:
-  homeassistant:
-    version_strategy: stable    # latest | stable | pinned
-  nut:
-    version_strategy: pinned
-    pinned_digest: sha256:edadf0d...
-
-# Web UI (set with: dam --web-passwd)
 web:
   username: admin
-  password_hash: sha256:SALT:HASH
+  password_hash: sha256:SALT:HASH   # set via dam --web-passwd or Settings page
+
+dam:
+  snapshot_retention: 10     # keep last N snapshots
+  log_retention_days: 30
+  auto_prune: true           # prune unused images after update
+  recreate_delay: 5          # seconds between stop and start on recreate
 
 daemon:
-  schedule: "0 2 1 * *"        # 2 AM on the 1st of every month
+  schedule: "0 2 1 * *"     # cron schedule for automated runs
+
+containers:
+  my-container:
+    version_strategy: pinned
+    pinned_digest: sha256:abc123...
 ```
 
 ---
 
-## How updates work
+## Password Management
 
-1. Inspect all containers — capture full config (IPs, volumes, env, networks, labels)
-2. Save pre-update YAML snapshot
-3. Pull latest image per container
-4. Compare digests — skip if unchanged
-5. Recreate only changed containers, preserving static IPs and all settings
-6. Prune old images (if `auto_prune` enabled)
-7. Save post-update snapshot as next drift baseline
+**From CLI:**
+```bash
+dam --web-passwd              # interactive prompt, writes sha256:salt:hash
+```
+
+**From web UI:**  
+Settings → Change Password section
+
+**Manual reset** (if locked out):
+```bash
+docker exec dam-web python3 -c "
+import hashlib, secrets
+pwd = 'newpassword'
+salt = secrets.token_hex(16)
+h = hashlib.sha256((salt+pwd).encode()).hexdigest()
+open('/app/config/settings.yaml','w').write(
+  'web:\n  username: admin\n  password_hash: sha256:'+salt+':'+h+'\n')
+print('Done')
+"
+docker restart dam-web
+```
 
 ---
 
-## Drift detection severity
-
-| Level       | Examples |
-|-------------|---------|
-| 🔴 CRITICAL | Container added or removed |
-| 🟠 HIGH     | Image, IP, network, privilege changed |
-| 🟡 MEDIUM   | Volumes, ports, restart policy, devices |
-| 🔵 LOW      | Env vars, labels, capabilities |
-| ⚪ INFO     | Status change only (running→exited) |
-
----
-
-## Project structure
+## Architecture
 
 ```
 dam/
+├── cli.py              Click CLI entry point
+├── main.py             Package entry point
+├── tui.py              Rich TUI (9-option interactive menu)
 ├── core/
-│   ├── inspector.py      Container discovery + full config extraction
-│   ├── snapshot.py       YAML snapshot save/load with rotation
-│   ├── updater.py        Pull, digest compare, recreate
-│   ├── pruner.py         Safe image cleanup
-│   ├── drift.py          Config drift detection (5 severity levels)
-│   ├── exporter.py       Export to dam-yaml / docker-run / compose
-│   ├── importer.py       Import from DAM YAML, recreate containers
-│   └── deprecation.py    EOL / deprecated image detection
+│   ├── inspector.py    Docker SDK container inspection → ContainerConfig
+│   ├── snapshot.py     YAML snapshot save/load/list
+│   ├── updater.py      Digest-compare update + static IP preservation
+│   ├── pruner.py       Unused image removal
+│   ├── drift.py        5-level severity diff engine
+│   ├── exporter.py     Export to DAM YAML / shell script / compose
+│   ├── importer.py     Recreate containers from DAM YAML
+│   └── deprecation.py  EOL/deprecation checker + bundled eol.yaml
 ├── platform/
-│   ├── detector.py       Auto-detect platform at runtime
-│   ├── base.py           Abstract adapter interface
-│   ├── qnap.py           QNAP adapter (macvlan + qnet static IPs)
-│   ├── synology.py       Synology adapter
-│   └── generic.py        Generic Linux fallback
+│   ├── detector.py     Auto-detect QNAP / Synology / Generic
+│   ├── qnap.py         QNAP-specific: qnet static IP networks
+│   ├── synology.py     Synology-specific paths
+│   └── generic.py      Generic Linux
 ├── daemon/
-│   ├── scheduler.py      Cron expression parser
-│   └── service.py        Install/remove/status/run loop
-├── web/
-│   ├── server.py         FastAPI backend (all API endpoints)
-│   ├── auth.py           Session auth + bcrypt/sha256 password hashing
-│   ├── dam_updater.py    Self-update logic (git pull → zip fallback)
-│   └── static/
-│       └── index.html    Single-file Alpine.js SPA (no build step)
-├── tui.py                Rich interactive TUI (9 menu options)
-├── cli.py                Click CLI entry point
-└── main.py               dam binary
-data/
-└── eol.yaml              Community-maintained deprecated image database
-tests/                    281 tests, all mocked (no live Docker required)
-docs/                     Deployment guides
-config/                   settings.yaml
+│   ├── scheduler.py    Cron job installer
+│   └── service.py      Systemd unit installer
+└── web/
+    ├── server.py       FastAPI app + all endpoints
+    ├── auth.py         Password hashing (legacy)
+    ├── dam_updater.py  Self-update (git pull → zip fallback)
+    ├── write_html.py   Generates static/index.html
+    └── static/
+        ├── index.html  Alpine.js SPA (single file, ~750 lines)
+        ├── alpine.min.js  (optional local copy)
+        └── fa.min.css     (optional local copy)
 ```
 
 ---
 
-## DAM vs DockPeek
-
-Both are complementary tools. DAM focuses on lifecycle management; DockPeek focuses on dashboard access.
-
-| Feature | DAM | DockPeek |
-|---------|-----|----------|
-| Web dashboard | ✅ | ✅ |
-| Live log viewer | ✅ | ✅ |
-| Start/Stop/Restart | ✅ | ✅ |
-| Port links (http/https) | ✅ | ✅ |
-| Container tags + labels | ✅ (dockpeek-compatible) | ✅ |
-| Image updates | ✅ Dry-run + confirm | ✅ One-click |
-| YAML snapshots | ✅ | ❌ |
-| Drift detection | ✅ 5-level severity | ❌ |
-| Export (yaml/sh/compose) | ✅ | ❌ |
-| Import / migrate | ✅ | ❌ |
-| EOL image database | ✅ | ❌ |
-| Static IP preservation | ✅ QNAP qnet/macvlan | ❌ |
-| CLI / TUI interface | ✅ | ❌ |
-| Self-updater | ✅ git pull + zip | ❌ |
-| Multi-host | ❌ | ✅ |
-
-> Note: `containrrr/watchtower` — the most common alternative — was archived in December 2025 and is no longer maintained.
-
----
-
-## Help wanted — platform contributors
-
-| Platform       | Status         |
-|----------------|----------------|
-| Unraid         | 🙏 Wanted      |
-| TrueNAS Scale  | 🙏 Wanted      |
-| TrueNAS Core   | 🙏 Wanted      |
-| OpenMediaVault | 🙏 Wanted      |
-| Synology DSM   | 🔶 Stub exists |
-| Proxmox LXC    | 🙏 Wanted      |
-| Raspberry Pi   | 🙏 Wanted      |
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the step-by-step guide.
-
----
-
-## Running tests
+## Development
 
 ```bash
-python tests/test_inspector_snapshot.py   # 33 tests
-python tests/test_updater_pruner.py       # 37 tests
-python tests/test_drift.py                # 48 tests
-python tests/test_tui.py                  # 51 tests
-python tests/test_daemon.py               # 54 tests
-python tests/test_exporter_importer_deprecation.py  # 58 tests
-# Total: 281 tests — no live Docker daemon required
+pip install -e ".[dev]"
+
+# Run tests (no Docker daemon required)
+pytest tests/ -v
+
+# Lint
+flake8 dam/ --max-line-length=120
+
+# Regenerate index.html from write_html.py template
+python dam/web/write_html.py
 ```
 
 ---
 
-## Changelog
+## Known Limitations
 
-See [CHANGELOG.md](CHANGELOG.md) for full version history.
-
-- **v0.4.0** — Web UI: log viewer, start/stop/restart, search, dark mode, DAM self-updater
-- **v0.3.0** — Web UI launched (FastAPI + Alpine.js SPA, cookie auth)
-- **v0.2.0** — Export/import, EOL/deprecation detection, bundled eol.yaml
-- **v0.1.0** — Core engine: inspect, snapshot, update, drift, prune, TUI, CLI, daemon
+- Export downloads work via browser — direct file download from web UI (file-picker upload for import coming)
+- Font Awesome icons require `fa.min.css` to be present locally on CDN-restricted networks
+- Self-update requires either a `.git` directory or network access to GitHub
 
 ---
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT

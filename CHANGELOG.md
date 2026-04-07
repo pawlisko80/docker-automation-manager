@@ -23,23 +23,44 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Dark / light mode toggle — persisted to localStorage
 - Clickable port links — http/https auto-detected (443/8443/9443 = HTTPS)
 - Container tag pills — reads `dockpeek.tags` / `dam.tags` labels
-- Clickable container names — reads `dockpeek.link` / `dam.link` labels
+- Clickable container names — auto-link to service web UI (IP + resolved port)
+- Port auto-detection — priority order: `dam.ports` label → env vars (`WEB_PORT`, `PORT`, etc.) → `ExposedPorts` → well-known image map
+- Host-mode container links — use `window.location.hostname` for correct routing
 - Extra ports display — reads `dockpeek.ports` / `dam.ports` labels
 - DAM self-update panel — checks GitHub releases API, shows version badge in sidebar
   - git pull (if .git dir present) with zip download fallback
-  - Update available badge appears automatically in sidebar
-- `dam/web/dam_updater.py` — self-update module (git pull → zip fallback)
+- **Import page** — paste DAM YAML → Preview → Dry Run → live Import
+- **Settings page** — platform info, Docker engine info, editable DAM config (retention, delay, schedule, auto-prune), change password
+- **Take Snapshot button** in web UI Snapshots page — no CLI required
+- `POST /api/snapshots` — take snapshot from web UI
+- `GET/POST /api/settings` — read and update DAM configuration
+- `POST /api/import/preview` — parse and validate YAML without creating containers
+- `POST /api/import/run` — recreate containers from DAM YAML (dry-run or live)
+- `POST /api/auth/change-password` — change web UI password from browser
 - New API endpoints:
   - `GET  /api/containers/{name}/logs?tail=N&follow=bool` — SSE log stream
   - `POST /api/containers/{name}/start|stop|restart` — container lifecycle
   - `GET  /api/dam/version` — check GitHub releases for latest version
   - `POST /api/dam/update` — trigger self-update
 
+### Fixed
+
+- **Critical: JS syntax error** — literal newline inside JS string in `write_html.py` caused `dam()` function to never parse (blank screen on all browsers)
+- **Alpine.js initialization** — moved `x-data="dam()"` from `<html>` to `<body>` tag; Alpine v3 does not reliably initialize on `<html>`
+- **CDN blocked on restricted networks** — Alpine.js and Font Awesome now served locally from `/static/` instead of cdnjs.cloudflare.com
+- **Password format unification** — `dam --web-passwd` now writes `sha256:salt:hash` format; old bcrypt and `auth[]` list formats caused persistent login failures
+- `_verify_password` now handles all three formats: `sha256:salt:hash`, `$2b$` bcrypt (legacy), plain sha256
+- **Port detection for macvlan/host containers** — env var ports (`WEB_PORT=80`) take exclusive priority over `ExposedPorts`; well-known image map as final fallback
+- TUI export, import, and drift prompts now accept `q` to cancel — previously trapped the user with no escape
+- Removed stale `determined_mestorf` debug container from inspection results
+- All flake8 warnings resolved — unused imports, F541, F841, E704, E303, E301, E271, E128
+
 ### Changed
 
+- `dam --web-passwd` rewrites settings in flat `web.username` + `web.password_hash` format, removes legacy `web.auth[]` list
+- Port links for published-port containers now use container IP instead of `localhost`
+- Snapshot empty-state message updated to prompt user to take a snapshot
 - Version bumped to 0.4.0
-- `server.py` fully rewritten with all new endpoints
-- `index.html` fully rewritten (721 lines, 20 features)
 
 ---
 
@@ -58,12 +79,11 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   - Snapshots: list + view detail
 - `dam --web` — launch web UI (default: http://localhost:8080)
 - `dam --web --host 0.0.0.0 --port 8080` — bind to network (QNAP access from browser)
-- `dam --web-passwd` — interactive password setup, saves sha256 hash to settings.yaml
-- Web dependencies added to requirements.txt: fastapi, uvicorn, python-multipart, passlib
-
-### Changed
-
-- Version bumped to 0.3.0
+- `dam --web-passwd` — interactive password setup
+- Cookie session auth with configurable TTL
+- FastAPI with SSE streaming for update progress
+- `dam/web/auth.py` — password hashing and session management
+- `dam/web/server.py` — FastAPI application with all endpoints
 
 ---
 
@@ -71,73 +91,27 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- `core/exporter.py` — export containers to 3 formats:
-  - `dam-yaml` — full config snapshot, re-importable by DAM on any host
-  - `docker-run` — executable `.sh` script, works anywhere without DAM
-  - `compose` — valid `docker-compose.yml`, single or full stack
-- `core/importer.py` — import from DAM YAML, recreate containers with dry-run and overwrite options
-- `core/deprecation.py` — checks containers against EOL/archived image database
-- `data/eol.yaml` — bundled community-maintained deprecated image database
-  - Includes: containrrr/watchtower (archived Dec 2025), portainer/portainer, ouroboros, linuxserver/letsencrypt, and more
-  - GitHub API support for detecting archived repositories (opt-in)
-- 58 new tests — total now 281/281
-
-### Changed
-
-- Version bumped to 0.2.0
+- `dam/core/exporter.py` — export container configs as DAM YAML, shell script (`docker run`), or `docker-compose.yml`
+- `dam/core/importer.py` — recreate containers from DAM YAML export; dry-run mode; overwrite flag
+- `dam/core/deprecation.py` + `data/eol.yaml` — bundled EOL/deprecation database
+  - watchtower (archived Dec 2025), portainer CE, ouroboros, letsencrypt→swag migration, postgres EOL versions
+- CLI flags: `--export`, `--import-file`, `--eol-check`
+- TUI menu options 7 (Export), 8 (Import), 9 (EOL Check)
+- Exit code 3 when `--eol-check` finds deprecated images
 
 ---
 
-## [0.1.0] — 2026-04-05
+## [0.1.0] — 2026-04-06
 
 ### Added
 
-**Core engine**
-- `inspector.py` — Docker SDK-based container discovery, full config extraction into `ContainerConfig` dataclass. Filters runtime env vars injected by base images (PATH, S6_*, UV_*, etc.)
-- `snapshot.py` — timestamped YAML snapshots with rotation, `latest.yaml` always current, `load_previous()` for drift comparison
-- `updater.py` — digest-comparison update cycle: pull → compare → recreate only changed containers. Dry-run mode, per-container version strategy (latest/stable/pinned), progress callback hook
-- `pruner.py` — safe image cleanup: never removes images in use, targets dangling + replaced + optionally unreferenced. Dry-run preview with space estimates
-- `drift.py` — five-level severity drift detection (CRITICAL/HIGH/MEDIUM/LOW/INFO) across all container config fields: image, network/IP, volumes, env, capabilities, devices, ports, labels
-
-**Platform layer**
-- `base.py` — abstract platform adapter interface
-- `detector.py` — auto-detects QNAP, Synology, or Generic Linux at runtime via filesystem fingerprints, `/proc/version`, os-release, and Docker network driver signals
-- `qnap.py` — QNAP adapter: qnet/macvlan static IP support, `/share/Container` paths, `/etc/config/crontab` with reload
-- `synology.py` — Synology adapter stub (community-extendable): `/volume1/docker` paths, systemd/crontab
-- `generic.py` — Generic Linux fallback: `/opt/docker`, systemd or `/etc/cron.d`
-
-**Daemon**
-- `scheduler.py` — pure stdlib cron expression parser and next-run calculator (no external dependencies). Supports `*`, `*/n`, `a-b`, `a,b,c`, `a-b/n` syntax. Sunday=0 and Sunday=7 both supported
-- `service.py` — daemon lifecycle: install (cron or systemd), remove, status query, foreground run loop with graceful SIGTERM shutdown, structured run state persistence
-
-**Interface**
-- `tui.py` — Rich terminal UI: header bar, main menu, status table, update results with progress bars, drift diff view, prune preview/result, snapshot browser, platform/settings panels
-- `cli.py` — dual-mode Click CLI: no flags = interactive TUI; `--status`, `--update`, `--drift`, `--prune`, `--install-daemon` for headless/automation use. Exit code 2 on drift detected
-- `main.py` — `dam` binary entry point
-
-**Project**
-- `config/settings.yaml` — per-container version strategy, retention, auto-prune, daemon schedule
-- 223 tests across 5 test files, 0 failures
-- GitHub Actions CI (Python 3.10/3.11/3.12)
-- Issue templates: bug report, feature request, new platform adapter
-- `CONTRIBUTING.md` with platform adapter guide
-
-### Platform support
-
-| Platform       | Status    | Networks              | Paths                    | Daemon         |
-|----------------|-----------|-----------------------|--------------------------|----------------|
-| QNAP NAS       | ✅ Tested  | macvlan, qnet (static)| /share/Container         | crontab        |
-| Synology NAS   | 🔶 Stub   | macvlan, bridge       | /volume1/docker          | systemd/cron   |
-| Generic Linux  | ✅ Tested  | macvlan, ipvlan       | /opt/docker              | systemd/cron.d |
-
-### Known limitations
-
-- Synology adapter is a stub — needs testing and refinement from a Synology owner
-- `--install-daemon` with systemd requires root privileges
-- Container health check waiting not yet implemented (containers are assumed healthy after start)
-- No notification support yet (email/webhook on update completion)
-
----
-
-[Unreleased]: https://github.com/yourusername/docker-automation-manager/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/yourusername/docker-automation-manager/releases/tag/v0.1.0
+- Platform auto-detection: QNAP, Synology, Generic Linux
+- `dam/core/inspector.py` — reads full container config via Docker SDK (no shell parsing)
+- `dam/core/snapshot.py` — save/load/list YAML snapshots with configurable retention
+- `dam/core/updater.py` — digest-compare update with static IP preservation
+- `dam/core/pruner.py` — remove dangling/unused images, dry-run mode
+- `dam/core/drift.py` — 5-level severity diff (critical/high/medium/low/info)
+- Rich TUI with 9-option interactive menu, progress bars, color-coded tables
+- Click CLI with full flag coverage
+- `dam/daemon/` — cron and systemd daemon installer
+- 281 unit tests, fully mocked (no live Docker daemon required)
