@@ -55,7 +55,8 @@ async def startup():
     _snapshot_manager = SnapshotManager(retention=_settings.get("dam", {}).get("snapshot_retention", 10))
 
 
-def _hash_password(p): return hashlib.sha256(p.encode()).hexdigest()
+def _hash_password(p):
+    return hashlib.sha256(p.encode()).hexdigest()
 
 
 def _verify_password(password: str, stored_hash: str) -> bool:

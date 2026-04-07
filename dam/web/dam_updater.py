@@ -17,10 +17,8 @@ source is mounted at /app from /share/Container/docker-automation-manager.
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import subprocess
-import sys
 import tempfile
 import urllib.request
 import urllib.error
@@ -32,9 +30,9 @@ from typing import Optional
 from dam import __version__
 
 GITHUB_OWNER = "pawlisko80"
-GITHUB_REPO  = "docker-automation-manager"
-GITHUB_API   = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases/latest"
-GITHUB_ZIP   = "https://github.com/{owner}/{repo}/archive/refs/tags/{tag}.zip"
+GITHUB_REPO = "docker-automation-manager"
+GITHUB_API = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases/latest"
+GITHUB_ZIP = "https://github.com/{owner}/{repo}/archive/refs/tags/{tag}.zip"
 
 # Root of the DAM installation (where setup.py lives)
 DAM_ROOT = Path(__file__).parent.parent.parent

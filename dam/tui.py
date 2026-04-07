@@ -37,9 +37,9 @@ from rich.text import Text
 from rich import box
 
 from dam import __version__
-from dam.core.deprecation import DeprecationChecker, DeprecationStatus, DeprecationSeverity
+from dam.core.deprecation import DeprecationChecker, DeprecationStatus
 from dam.core.drift import DriftDetector, DriftReport
-from dam.core.exporter import Exporter, FORMATS
+from dam.core.exporter import Exporter
 from dam.core.importer import Importer, ImportStatus
 from dam.core.inspector import ContainerConfig, Inspector
 from dam.core.pruner import Pruner
@@ -62,36 +62,36 @@ console = Console()
 
 SEVERITY_COLORS = {
     "critical": "bold red",
-    "high":     "red",
-    "medium":   "yellow",
-    "low":      "cyan",
-    "info":     "dim",
+    "high": "red",
+    "medium": "yellow",
+    "low": "cyan",
+    "info": "dim",
 }
 
 STATUS_COLORS = {
-    "running":     "bold green",
-    "healthy":     "bold green",
-    "exited":      "red",
-    "paused":      "yellow",
-    "restarting":  "yellow",
-    "dead":        "bold red",
-    "unknown":     "dim",
+    "running": "bold green",
+    "healthy": "bold green",
+    "exited": "red",
+    "paused": "yellow",
+    "restarting": "yellow",
+    "dead": "bold red",
+    "unknown": "dim",
 }
 
 UPDATE_STATUS_COLORS = {
-    UpdateStatus.UPDATED:  "bold green",
-    UpdateStatus.SKIPPED:  "dim",
-    UpdateStatus.PINNED:   "cyan",
-    UpdateStatus.FAILED:   "bold red",
-    UpdateStatus.DRY_RUN:  "yellow",
+    UpdateStatus.UPDATED: "bold green",
+    UpdateStatus.SKIPPED: "dim",
+    UpdateStatus.PINNED: "cyan",
+    UpdateStatus.FAILED: "bold red",
+    UpdateStatus.DRY_RUN: "yellow",
 }
 
 UPDATE_STATUS_ICONS = {
-    UpdateStatus.UPDATED:  "✓",
-    UpdateStatus.SKIPPED:  "–",
-    UpdateStatus.PINNED:   "📌",
-    UpdateStatus.FAILED:   "✗",
-    UpdateStatus.DRY_RUN:  "◎",
+    UpdateStatus.UPDATED: "✓",
+    UpdateStatus.SKIPPED: "–",
+    UpdateStatus.PINNED: "📌",
+    UpdateStatus.FAILED: "✗",
+    UpdateStatus.DRY_RUN: "◎",
 }
 
 
@@ -119,16 +119,16 @@ def render_header(platform: BasePlatform, snapshot_count: int) -> Panel:
 # ------------------------------------------------------------
 
 MENU_OPTIONS = [
-    ("1", "Status",   "Show all containers with current state"),
-    ("2", "Update",   "Pull latest images and recreate changed containers"),
-    ("3", "Drift",    "Compare current state against last snapshot"),
-    ("4", "Prune",    "Remove unused images"),
-    ("5", "Snapshots","Browse and manage saved snapshots"),
+    ("1", "Status", "Show all containers with current state"),
+    ("2", "Update", "Pull latest images and recreate changed containers"),
+    ("3", "Drift", "Compare current state against last snapshot"),
+    ("4", "Prune", "Remove unused images"),
+    ("5", "Snapshots", "Browse and manage saved snapshots"),
     ("6", "Settings", "View platform info and configuration"),
-    ("7", "Export",   "Export container configs (dam-yaml / docker-run / compose)"),
-    ("8", "Import",   "Import and recreate containers from a DAM YAML file"),
-    ("9", "EOL Check","Check for deprecated or archived images"),
-    ("q", "Quit",     "Exit DAM"),
+    ("7", "Export", "Export container configs (dam-yaml / docker-run / compose)"),
+    ("8", "Import", "Import and recreate containers from a DAM YAML file"),
+    ("9", "EOL Check", "Check for deprecated or archived images"),
+    ("q", "Quit", "Exit DAM"),
 ]
 
 
@@ -168,17 +168,17 @@ def render_status_table(configs: list[ContainerConfig]) -> Table:
         header_style="bold cyan",
         expand=True,
     )
-    table.add_column("Container",      style="bold white",  min_width=16)
-    table.add_column("Image",          style="cyan",        min_width=30, overflow="fold")
-    table.add_column("Status",         min_width=10)
-    table.add_column("IP / Network",   min_width=22)
-    table.add_column("Restart",        min_width=14)
-    table.add_column("Strategy",       min_width=8)
-    table.add_column("Volumes",        min_width=8)
+    table.add_column("Container", style="bold white", min_width=16)
+    table.add_column("Image", style="cyan", min_width=30, overflow="fold")
+    table.add_column("Status", min_width=10)
+    table.add_column("IP / Network", min_width=22)
+    table.add_column("Restart", min_width=14)
+    table.add_column("Strategy", min_width=8)
+    table.add_column("Volumes", min_width=8)
 
     for cfg in sorted(configs, key=lambda c: c.name):
         status_color = STATUS_COLORS.get(cfg.status, "white")
-        status_text  = Text(cfg.status, style=status_color)
+        status_text = Text(cfg.status, style=status_color)
 
         ip = cfg.primary_ip()
         net = cfg.primary_network() or cfg.network_mode
@@ -216,16 +216,16 @@ def render_update_results(results: list[UpdateResult]) -> Table:
         header_style="bold cyan",
         expand=True,
     )
-    table.add_column("Container",  style="bold white", min_width=16)
-    table.add_column("Result",     min_width=10)
-    table.add_column("Old Image",  style="dim",  min_width=19, overflow="fold")
-    table.add_column("New Image",  style="cyan", min_width=19, overflow="fold")
-    table.add_column("Duration",   min_width=8)
-    table.add_column("Error",      style="red",  min_width=20, overflow="fold")
+    table.add_column("Container", style="bold white", min_width=16)
+    table.add_column("Result", min_width=10)
+    table.add_column("Old Image", style="dim", min_width=19, overflow="fold")
+    table.add_column("New Image", style="cyan", min_width=19, overflow="fold")
+    table.add_column("Duration", min_width=8)
+    table.add_column("Error", style="red", min_width=20, overflow="fold")
 
     for r in results:
         color = UPDATE_STATUS_COLORS.get(r.status, "white")
-        icon  = UPDATE_STATUS_ICONS.get(r.status, "?")
+        icon = UPDATE_STATUS_ICONS.get(r.status, "?")
         status_text = Text(f"{icon} {r.status.value}", style=color)
 
         old_id = r.old_image_id[:19] if r.old_image_id else "—"
@@ -254,11 +254,11 @@ def render_update_summary(summary: dict) -> Panel:
     grid.add_column(justify="center")
 
     grid.add_row(
-        Text(f"✓ {summary['updated']} updated",  style="bold green"),
-        Text(f"– {summary['skipped']} skipped",  style="dim"),
-        Text(f"📌 {summary['pinned']} pinned",    style="cyan"),
-        Text(f"◎ {summary['dry_run']} dry-run",  style="yellow"),
-        Text(f"✗ {summary['failed']} failed",    style="bold red"),
+        Text(f"✓ {summary['updated']} updated", style="bold green"),
+        Text(f"– {summary['skipped']} skipped", style="dim"),
+        Text(f"📌 {summary['pinned']} pinned", style="cyan"),
+        Text(f"◎ {summary['dry_run']} dry-run", style="yellow"),
+        Text(f"✗ {summary['failed']} failed", style="bold red"),
     )
 
     return Panel(grid, title="Summary", border_style="green" if summary["failed"] == 0 else "red")
@@ -280,12 +280,12 @@ def render_drift_report(report: DriftReport) -> Table:
         expand=True,
         show_lines=True,
     )
-    table.add_column("Severity",   min_width=10)
-    table.add_column("Container",  style="bold white", min_width=16)
-    table.add_column("Field",      style="cyan",       min_width=24)
-    table.add_column("Description",                    min_width=30)
-    table.add_column("Was",        style="dim red",    min_width=20, overflow="fold")
-    table.add_column("Now",        style="green",      min_width=20, overflow="fold")
+    table.add_column("Severity", min_width=10)
+    table.add_column("Container", style="bold white", min_width=16)
+    table.add_column("Field", style="cyan", min_width=24)
+    table.add_column("Description", min_width=30)
+    table.add_column("Was", style="dim red", min_width=20, overflow="fold")
+    table.add_column("Now", style="green", min_width=20, overflow="fold")
 
     for item in report.sorted_by_severity():
         sev_color = SEVERITY_COLORS.get(item.severity.value, "white")
@@ -315,10 +315,10 @@ def render_drift_summary(report: DriftReport) -> Panel:
     grid.add_row(
         Text(f"Containers affected: {summary['containers_affected']}", style="bold white"),
         Text(f"🔴 {summary['critical']} critical", style="bold red"),
-        Text(f"🟠 {summary['high']} high",         style="red"),
-        Text(f"🟡 {summary['medium']} medium",      style="yellow"),
-        Text(f"🔵 {summary['low']} low",            style="cyan"),
-        Text(f"⚪ {summary['info']} info",          style="dim"),
+        Text(f"🟠 {summary['high']} high", style="red"),
+        Text(f"🟡 {summary['medium']} medium", style="yellow"),
+        Text(f"🔵 {summary['low']} low", style="cyan"),
+        Text(f"⚪ {summary['info']} info", style="dim"),
     )
 
     border = "red" if summary["critical"] or summary["high"] else \
@@ -336,9 +336,9 @@ def render_prune_candidates(candidates: dict) -> Panel:
     grid.add_column(justify="left", style="dim")
     grid.add_column(justify="right")
 
-    grid.add_row("Dangling images:",    str(len(candidates.get("dangling", []))))
-    grid.add_row("Replaced images:",    str(len(candidates.get("replaced", []))))
-    grid.add_row("Unreferenced images:",str(len(candidates.get("unreferenced", []))))
+    grid.add_row("Dangling images:", str(len(candidates.get("dangling", []))))
+    grid.add_row("Replaced images:", str(len(candidates.get("replaced", []))))
+    grid.add_row("Unreferenced images:", str(len(candidates.get("unreferenced", []))))
     grid.add_row(Rule(), Rule())
     grid.add_row(
         Text("Total candidates:", style="bold"),
@@ -382,10 +382,10 @@ def render_snapshots_table(snapshot_manager: SnapshotManager) -> Table:
         header_style="bold cyan",
         expand=True,
     )
-    table.add_column("#",          style="dim",         width=4)
-    table.add_column("Filename",   style="cyan",        min_width=30)
-    table.add_column("Size",       justify="right",     min_width=8)
-    table.add_column("Label",      style="dim",         min_width=12)
+    table.add_column("#", style="dim", width=4)
+    table.add_column("Filename", style="cyan", min_width=30)
+    table.add_column("Size", justify="right", min_width=8)
+    table.add_column("Label", style="dim", min_width=12)
 
     for i, path in enumerate(snapshots, 1):
         size_kb = path.stat().st_size / 1024
@@ -414,11 +414,11 @@ def render_platform_info(platform: BasePlatform) -> Panel:
     table.add_column(style="bold cyan", justify="right")
     table.add_column(style="white")
 
-    table.add_row("Platform:",        info["platform"])
-    table.add_row("Data root:",       info["data_root"])
-    table.add_row("Log root:",        info["log_root"])
-    table.add_row("Systemd:",         "yes" if info["systemd"] else "no")
-    table.add_row("Cron path:",       info["cron_path"])
+    table.add_row("Platform:", info["platform"])
+    table.add_row("Data root:", info["data_root"])
+    table.add_row("Log root:", info["log_root"])
+    table.add_row("Systemd:", "yes" if info["systemd"] else "no")
+    table.add_row("Cron path:", info["cron_path"])
 
     return Panel(table, title="Platform Info", border_style="cyan")
 
@@ -434,11 +434,11 @@ def render_settings(settings: dict) -> Panel:
     table.add_column(style="white")
 
     table.add_row("Snapshot retention:", str(dam_cfg.get("snapshot_retention", 10)))
-    table.add_row("Log retention:",      f"{dam_cfg.get('log_retention_days', 30)} days")
-    table.add_row("Auto prune:",         "yes" if dam_cfg.get("auto_prune", True) else "no")
-    table.add_row("Recreate delay:",     f"{dam_cfg.get('recreate_delay', 5)}s")
-    table.add_row("Daemon schedule:",    daemon_cfg.get("schedule", "0 2 1 * *"))
-    table.add_row("Pinned containers:",  str(len(containers_cfg)))
+    table.add_row("Log retention:", f"{dam_cfg.get('log_retention_days', 30)} days")
+    table.add_row("Auto prune:", "yes" if dam_cfg.get("auto_prune", True) else "no")
+    table.add_row("Recreate delay:", f"{dam_cfg.get('recreate_delay', 5)}s")
+    table.add_row("Daemon schedule:", daemon_cfg.get("schedule", "0 2 1 * *"))
+    table.add_row("Pinned containers:", str(len(containers_cfg)))
 
     return Panel(table, title="Settings (config/settings.yaml)", border_style="cyan")
 
@@ -871,7 +871,7 @@ class DAMTui:
             inspector = self._make_inspector()
             ver = inspector.docker_version()
             docker_ver = ver.get("Version", "unknown")
-            api_ver    = ver.get("ApiVersion", "unknown")
+            api_ver = ver.get("ApiVersion", "unknown")
             console.print(Panel(
                 f"Docker Engine: [cyan]{docker_ver}[/cyan]   API: [dim]{api_ver}[/dim]",
                 title="Docker Info",
@@ -881,7 +881,6 @@ class DAMTui:
             pass
 
         Prompt.ask("\n[dim]Press Enter to continue[/dim]", default="")
-
 
     # ------------------------------------------------------------
     # Action: Export
@@ -1012,7 +1011,7 @@ class DAMTui:
             return
 
         console.print(f"\n[dim]Exported: {meta.get('exported_at', 'unknown')}  "
-                     f"DAM version: {meta.get('dam_version', 'unknown')}[/dim]\n")
+                      f"DAM version: {meta.get('dam_version', 'unknown')}[/dim]\n")
         console.print(f"Found [bold]{len(configs)}[/bold] container(s) to import:")
         for cfg in configs:
             console.print(f"  [cyan]•[/cyan] {cfg.name}  [dim]({cfg.image})[/dim]")
@@ -1038,16 +1037,16 @@ class DAMTui:
         table.add_column("Error", style="red", min_width=20, overflow="fold")
 
         status_colors = {
-            ImportStatus.CREATED:  "bold green",
-            ImportStatus.SKIPPED:  "dim",
-            ImportStatus.DRY_RUN:  "yellow",
-            ImportStatus.FAILED:   "bold red",
+            ImportStatus.CREATED: "bold green",
+            ImportStatus.SKIPPED: "dim",
+            ImportStatus.DRY_RUN: "yellow",
+            ImportStatus.FAILED: "bold red",
         }
         status_icons = {
-            ImportStatus.CREATED:  "✓",
-            ImportStatus.SKIPPED:  "–",
-            ImportStatus.DRY_RUN:  "◎",
-            ImportStatus.FAILED:   "✗",
+            ImportStatus.CREATED: "✓",
+            ImportStatus.SKIPPED: "–",
+            ImportStatus.DRY_RUN: "◎",
+            ImportStatus.FAILED: "✗",
         }
 
         for r in results:
@@ -1105,13 +1104,14 @@ class DAMTui:
         grid.add_column(justify="center")
         grid.add_column(justify="center")
         grid.add_row(
-            Text(f"✓ {summary['ok']} ok",             style="bold green"),
+            Text(f"✓ {summary['ok']} ok", style="bold green"),
             Text(f"⚠ {summary['deprecated']} deprecated", style="yellow"),
-            Text(f"📦 {summary['archived']} archived",  style="yellow"),
-            Text(f"☠ {summary['eol']} EOL",            style="bold red"),
+            Text(f"📦 {summary['archived']} archived", style="yellow"),
+            Text(f"☠ {summary['eol']} EOL", style="bold red"),
             Text(f"{summary['total_checked']} checked", style="dim"),
         )
-        border = "red" if summary["eol"] > 0 else                  "yellow" if (summary["deprecated"] + summary["archived"]) > 0 else "green"
+        border = "red" if summary["eol"] > 0 else "yellow" if (
+            summary["deprecated"] + summary["archived"]) > 0 else "green"
         console.print(Panel(grid, title="Deprecation Check Summary", border_style=border))
         console.print()
 
@@ -1129,21 +1129,21 @@ class DAMTui:
                 expand=True,
                 show_lines=True,
             )
-            table.add_column("Container",   style="bold white", min_width=16)
-            table.add_column("Image",       style="dim",        min_width=28, overflow="fold")
-            table.add_column("Status",      min_width=12)
-            table.add_column("Reason",      min_width=30, overflow="fold")
-            table.add_column("Alternatives",min_width=24, overflow="fold")
+            table.add_column("Container", style="bold white", min_width=16)
+            table.add_column("Image", style="dim", min_width=28, overflow="fold")
+            table.add_column("Status", min_width=12)
+            table.add_column("Reason", min_width=30, overflow="fold")
+            table.add_column("Alternatives", min_width=24, overflow="fold")
 
             status_colors = {
                 DeprecationStatus.DEPRECATED: "yellow",
-                DeprecationStatus.ARCHIVED:   "yellow",
-                DeprecationStatus.EOL:        "bold red",
+                DeprecationStatus.ARCHIVED: "yellow",
+                DeprecationStatus.EOL: "bold red",
             }
             status_icons = {
                 DeprecationStatus.DEPRECATED: "⚠",
-                DeprecationStatus.ARCHIVED:   "📦",
-                DeprecationStatus.EOL:        "☠",
+                DeprecationStatus.ARCHIVED: "📦",
+                DeprecationStatus.EOL: "☠",
             }
 
             for r in warnings:

@@ -13,12 +13,9 @@ GET  /api/containers/update/stream — SSE live progress stream
 
 from __future__ import annotations
 
-import asyncio
-import json
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/containers", tags=["containers"])
@@ -52,7 +49,6 @@ def get_state(request):
 @router.get("")
 async def list_containers(request_obj=None):
     """Return all containers with their current config."""
-    from fastapi import Request
     return _list_containers_impl()
 
 
