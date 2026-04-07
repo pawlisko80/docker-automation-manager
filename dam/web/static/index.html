@@ -119,6 +119,9 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
       <div class="nav-item" :class="{active:pg==='prune'}" @click="go('prune')"><i class="fa fa-trash-can"></i> Prune</div>
       <div class="nav-item" :class="{active:pg==='export'}" @click="go('export')"><i class="fa fa-file-export"></i> Export</div>
       <div class="nav-item" :class="{active:pg==='snaps'}" @click="go('snaps')"><i class="fa fa-camera"></i> Snapshots</div>
+      <div class="nav-item" :class="{active:pg==='import'}" @click="go('import')"><i class="fa fa-file-import"></i> Import</div>
+      <div class="nav-sep"></div>
+      <div class="nav-item" :class="{active:pg==='settings'}" @click="go('settings')"><i class="fa fa-gear"></i> Settings</div>
     </nav>
     <div class="sidebar-footer">
       <div class="platform-tag" x-text="'Platform: '+plat"></div>
@@ -525,6 +528,140 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
       </div>
     </div>
 
+    <!-- Import page -->
+    <div x-show="pg==='import'">
+      <div class="flex gap mb16" style="align-items:center">
+        <div class="page-title">Import Containers</div>
+      </div>
+      <div class="card" style="margin-bottom:12px">
+        <div class="card-title">Paste DAM YAML</div>
+        <textarea x-model="imp.yaml" placeholder="Paste contents of a .dam.yaml export file here..." style="width:100%;height:180px;font-family:monospace;font-size:12px;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px;box-sizing:border-box;resize:vertical"></textarea>
+        <div class="flex gap" style="margin-top:10px;align-items:center;flex-wrap:wrap;gap:8px">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px">
+            <input type="checkbox" x-model="imp.overwrite"> Overwrite existing containers
+          </label>
+          <button class="btn btn-s btn-sm mla" @click="impPreview()" :disabled="ld.imp||!imp.yaml.trim()"><i class="fa fa-eye"></i> Preview</button>
+          <button class="btn btn-sm" @click="impRun(false)" :disabled="ld.imp||!imp.yaml.trim()||!imp.preview"><i class="fa fa-play"></i> Dry Run</button>
+          <button class="btn btn-sm" style="background:var(--green)" @click="impRun(true)" :disabled="ld.imp||!imp.yaml.trim()||!imp.preview"><i class="fa fa-rocket"></i> Import</button>
+        </div>
+      </div>
+      <div class="card" x-show="ld.imp"><div class="spin"></div> Working...</div>
+      <div class="alert ad" x-show="imp.err" x-text="imp.err"></div>
+      <div x-show="imp.preview&&!ld.imp">
+        <div class="card" style="margin-bottom:12px">
+          <div class="card-title">Preview — <span x-text="imp.preview.length"></span> container(s)</div>
+          <table>
+            <thead><tr><th>Container</th><th>Image</th><th>Network</th><th>IP</th><th>Restart</th></tr></thead>
+            <tbody>
+              <template x-for="c in imp.preview" :key="c.name">
+                <tr>
+                  <td><strong x-text="c.name"></strong></td>
+                  <td class="mono dim" style="font-size:11px" x-text="c.image"></td>
+                  <td x-text="c.network_mode"></td>
+                  <td x-text="c.ip||'—'"></td>
+                  <td x-text="c.restart_policy"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div x-show="imp.results&&!ld.imp">
+        <div class="card">
+          <div class="card-title">Results</div>
+          <table>
+            <thead><tr><th>Container</th><th>Status</th><th>Details</th></tr></thead>
+            <tbody>
+              <template x-for="r in imp.results" :key="r.name">
+                <tr>
+                  <td><strong x-text="r.name"></strong></td>
+                  <td><span :class="r.status==='created'?'bs bs-running':r.status==='failed'?'bs bs-exited':'bs bs-paused'" x-text="r.status"></span></td>
+                  <td class="dim" style="font-size:12px" x-text="r.error||r.image"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings page -->
+    <div x-show="pg==='settings'">
+      <div class="flex gap mb16"><div class="page-title">Settings</div>
+        <button class="btn btn-s btn-sm mla" @click="loadSettings()"><i class="fa fa-refresh"></i> Refresh</button>
+      </div>
+      <div class="card" x-show="ld.settings"><div class="spin"></div> Loading...</div>
+      <div x-show="!ld.settings&&sett">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+          <div class="card">
+            <div class="card-title"><i class="fa fa-server"></i> Platform</div>
+            <table class="stbl">
+              <tr><td class="dim">Platform</td><td x-text="sett.platform&&sett.platform.platform||'—'"></td></tr>
+              <tr><td class="dim">Data root</td><td class="mono" style="font-size:11px" x-text="sett.platform&&sett.platform.data_root||'—'"></td></tr>
+              <tr><td class="dim">Log root</td><td class="mono" style="font-size:11px" x-text="sett.platform&&sett.platform.log_root||'—'"></td></tr>
+              <tr><td class="dim">Systemd</td><td x-text="sett.platform&&sett.platform.systemd?'yes':'no'"></td></tr>
+              <tr><td class="dim">Cron path</td><td class="mono" style="font-size:11px" x-text="sett.platform&&sett.platform.cron_path||'—'"></td></tr>
+            </table>
+          </div>
+          <div class="card">
+            <div class="card-title"><i class="fa fa-brands fa-docker"></i> Docker</div>
+            <table class="stbl">
+              <tr><td class="dim">Engine</td><td x-text="sett.docker&&sett.docker.version||'—'"></td></tr>
+              <tr><td class="dim">API version</td><td x-text="sett.docker&&sett.docker.api_version||'—'"></td></tr>
+              <tr><td class="dim">OS / Arch</td><td x-text="(sett.docker&&sett.docker.os||'—')+' / '+(sett.docker&&sett.docker.arch||'—')"></td></tr>
+              <tr><td class="dim">Pinned containers</td><td x-text="sett&&sett.pinned_containers"></td></tr>
+            </table>
+          </div>
+        </div>
+        <div class="card" style="margin-bottom:12px">
+          <div class="card-title"><i class="fa fa-sliders"></i> DAM Configuration</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:8px">
+            <div class="frow">
+              <label class="flbl">Snapshot retention (count)</label>
+              <input type="number" x-model.number="sett.dam.snapshot_retention" class="finp" min="1" max="100">
+            </div>
+            <div class="frow">
+              <label class="flbl">Log retention (days)</label>
+              <input type="number" x-model.number="sett.dam.log_retention_days" class="finp" min="1" max="365">
+            </div>
+            <div class="frow">
+              <label class="flbl">Recreate delay (seconds)</label>
+              <input type="number" x-model.number="sett.dam.recreate_delay" class="finp" min="0" max="60">
+            </div>
+            <div class="frow">
+              <label class="flbl">Daemon schedule (cron)</label>
+              <input type="text" x-model="sett.daemon.schedule" class="finp" placeholder="0 2 1 * *">
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;padding-top:16px">
+              <input type="checkbox" x-model="sett.dam.auto_prune" id="auto_prune">
+              <label for="auto_prune" style="font-size:13px">Auto prune after update</label>
+            </div>
+          </div>
+          <div class="alert ad" x-show="sett.err" x-text="sett.err" style="margin-top:10px"></div>
+          <div class="alert as" x-show="sett.savedok" x-text="sett.savedok" style="margin-top:10px"></div>
+          <button class="btn" @click="saveSettings()" :disabled="ld.savesett" style="margin-top:12px">
+            <span x-show="ld.savesett"><i class="fa fa-spinner fa-spin"></i> Saving...</span>
+            <span x-show="!ld.savesett"><i class="fa fa-save"></i> Save Settings</span>
+          </button>
+        </div>
+        <div class="card" style="max-width:420px">
+          <div class="card-title"><i class="fa fa-key"></i> Change Password</div>
+          <div style="margin-top:8px">
+            <div class="frow"><label class="flbl">Web UI Username</label><input type="text" x-model="pw.usr" class="finp" :placeholder="sett.web&&sett.web.username||'admin'"></div>
+            <div class="frow"><label class="flbl">Current Password</label><input type="password" x-model="pw.cur" class="finp" placeholder="Current password"></div>
+            <div class="frow"><label class="flbl">New Password</label><input type="password" x-model="pw.new1" class="finp" placeholder="New password (min 6 chars)"></div>
+            <div class="frow"><label class="flbl">Confirm New Password</label><input type="password" x-model="pw.new2" class="finp" placeholder="Confirm new password"></div>
+            <div class="alert ad" x-show="pw.err" x-text="pw.err" style="margin:8px 0"></div>
+            <div class="alert as" x-show="pw.ok" x-text="pw.ok" style="margin:8px 0"></div>
+            <button class="btn" @click="changePwd()" :disabled="ld.pw||!pw.cur||!pw.new1||!pw.new2" style="margin-top:4px;width:100%">
+              <span x-show="ld.pw"><i class="fa fa-spinner fa-spin"></i> Saving...</span>
+              <span x-show="!ld.pw"><i class="fa fa-save"></i> Update Password</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -534,7 +671,7 @@ auth:false,lf:{u:'',p:''},le:'',ll:false,
 pg:'dash',ver:'',plat:'',dark:true,q:'',ar:false,_art:null,
 cs:[],ld:{},
 eolR:[],eolS:{},eolW:0,
-drift:{},snaps:[],snapD:null,snapMsg:'',
+drift:{},snaps:[],snapD:null,snapMsg:'',imp:{yaml:'',preview:null,results:null,err:'',overwrite:false},pw:{cur:'',usr:'',new1:'',new2:'',err:'',ok:''},sett:null,
 us:1,sel:[],drr:[],drs:{},ulog:[],usum:{},sid:null,
 pc:null,pr:null,
 expSel:[],expFmt:'dam-yaml',
@@ -596,6 +733,7 @@ go(p){
   if(p==='prune'){this.pc=null;this.pr=null;}
   if(p==='export')this.loadC();
   if(p==='selfupd')this.chkDv();
+  if(p==='settings')this.loadSettings();
 },
 
 async loadC(){
@@ -612,6 +750,33 @@ async loadDrift(){
   this.ld.drift=true;
   try{const d=await this.api('/api/drift');if(d)this.drift=d;}
   catch(e){}finally{this.ld.drift=false;}
+},
+async impPreview(){
+  this.ld.imp=true;this.imp.err='';this.imp.preview=null;this.imp.results=null;
+  try{
+    const d=await this.api('/api/import/preview',{method:'POST',body:JSON.stringify({yaml_content:this.imp.yaml,dry_run:true,overwrite:this.imp.overwrite})});
+    if(d)this.imp.preview=d.containers;
+  }catch(e){this.imp.err=e.message;}
+  finally{this.ld.imp=false;}
+},
+async impRun(live){
+  this.ld.imp=true;this.imp.err='';this.imp.results=null;
+  try{
+    const d=await this.api('/api/import/run',{method:'POST',body:JSON.stringify({yaml_content:this.imp.yaml,dry_run:!live,overwrite:this.imp.overwrite})});
+    if(d){this.imp.results=d.results;}
+  }catch(e){this.imp.err=e.message;}
+  finally{this.ld.imp=false;}
+},
+async changePwd(){
+  this.pw.err='';this.pw.ok='';
+  if(this.pw.new1!==this.pw.new2){this.pw.err='New passwords do not match';return;}
+  if(this.pw.new1.length<6){this.pw.err='Password must be at least 6 characters';return;}
+  this.ld.pw=true;
+  try{
+    const d=await this.api('/api/auth/change-password',{method:'POST',body:JSON.stringify({current_password:this.pw.cur,new_password:this.pw.new1,username:this.pw.usr||undefined})});
+    if(d&&d.ok){this.pw.ok='Password updated successfully';this.pw.cur='';this.pw.new1='';this.pw.new2='';}
+  }catch(e){this.pw.err=e.message;}
+  finally{this.ld.pw=false;}
 },
 async takeSnap(){
   this.ld.snap=true;this.snapMsg='';
@@ -715,6 +880,25 @@ async doExp(){
   }catch(e){alert(e.message);}finally{this.ld.exp=false;}
 },
 
+async loadSettings(){
+  this.ld.settings=true;
+  try{const d=await this.api('/api/settings');if(d){this.sett=d;this.sett.err='';this.sett.savedok='';}}
+  catch(e){}finally{this.ld.settings=false;}
+},
+async saveSettings(){
+  this.ld.savesett=true;this.sett.err='';this.sett.savedok='';
+  try{
+    const d=await this.api('/api/settings',{method:'POST',body:JSON.stringify({
+      snapshot_retention:this.sett.dam.snapshot_retention,
+      log_retention_days:this.sett.dam.log_retention_days,
+      auto_prune:this.sett.dam.auto_prune,
+      recreate_delay:this.sett.dam.recreate_delay,
+      daemon_schedule:this.sett.daemon.schedule,
+    })});
+    if(d&&d.ok)this.sett.savedok='\u2713 Settings saved';
+  }catch(e){this.sett.err=e.message;}
+  finally{this.ld.savesett=false;setTimeout(()=>{if(this.sett){this.sett.savedok='';}},4000);}
+},
 async chkDv(){
   try{const d=await this.api('/api/dam/version');if(d)this.dv=d;}catch(e){}
 },

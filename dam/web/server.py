@@ -510,6 +510,75 @@ async def change_password(req: PasswordChangeRequest, request: Request, _=Depend
         raise HTTPException(status_code=500, detail=f"Saved in memory but failed to write config: {e}")
     return {"ok": True, "message": "Password updated successfully"}
 
+@app.get("/api/settings")
+async def get_settings(_=Depends(require_auth)):
+    """Return platform info, DAM config, and Docker version."""
+    try:
+        inspector = Inspector(_platform)
+        docker_ver = inspector.docker_version()
+    except Exception:
+        docker_ver = {}
+    plat_info = _platform.describe() if _platform else {}
+    dam_cfg = _settings.get("dam", {})
+    daemon_cfg = _settings.get("daemon", {})
+    containers_cfg = _settings.get("containers", {}) or {}
+    web_cfg = _settings.get("web", {})
+    return {
+        "platform": plat_info,
+        "docker": {
+            "version": docker_ver.get("Version", "unknown"),
+            "api_version": docker_ver.get("ApiVersion", "unknown"),
+            "os": docker_ver.get("Os", "unknown"),
+            "arch": docker_ver.get("Arch", "unknown"),
+        },
+        "dam": {
+            "snapshot_retention": dam_cfg.get("snapshot_retention", 10),
+            "log_retention_days": dam_cfg.get("log_retention_days", 30),
+            "auto_prune": dam_cfg.get("auto_prune", True),
+            "recreate_delay": dam_cfg.get("recreate_delay", 5),
+        },
+        "daemon": {
+            "schedule": daemon_cfg.get("schedule", "0 2 1 * *"),
+        },
+        "web": {
+            "username": web_cfg.get("username", "admin"),
+        },
+        "pinned_containers": len(containers_cfg),
+    }
+
+class SettingsUpdateRequest(BaseModel):
+    snapshot_retention: Optional[int] = None
+    log_retention_days: Optional[int] = None
+    auto_prune: Optional[bool] = None
+    recreate_delay: Optional[int] = None
+    daemon_schedule: Optional[str] = None
+
+@app.post("/api/settings")
+async def update_settings(req: SettingsUpdateRequest, _=Depends(require_auth)):
+    """Update editable DAM settings and save to config file."""
+    if "dam" not in _settings:
+        _settings["dam"] = {}
+    if "daemon" not in _settings:
+        _settings["daemon"] = {}
+    if req.snapshot_retention is not None:
+        _settings["dam"]["snapshot_retention"] = req.snapshot_retention
+    if req.log_retention_days is not None:
+        _settings["dam"]["log_retention_days"] = req.log_retention_days
+    if req.auto_prune is not None:
+        _settings["dam"]["auto_prune"] = req.auto_prune
+    if req.recreate_delay is not None:
+        _settings["dam"]["recreate_delay"] = req.recreate_delay
+    if req.daemon_schedule is not None:
+        _settings["daemon"]["schedule"] = req.daemon_schedule
+    cfg_path = Path(_settings.get("_config_path", "/app/config/settings.yaml"))
+    try:
+        save_settings = {k: v for k, v in _settings.items() if not k.startswith("_")}
+        cfg_path.parent.mkdir(parents=True, exist_ok=True)
+        cfg_path.write_text(yaml.dump(save_settings, default_flow_style=False))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Settings updated in memory but failed to save: {e}")
+    return {"ok": True}
+
 @app.get("/api/dam/version")
 async def dam_version_check(_=Depends(require_auth)):
     from dam.web.dam_updater import check_latest_version
