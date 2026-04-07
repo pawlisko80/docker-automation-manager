@@ -174,8 +174,8 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
             <template x-for="c in fcs" :key="c.name">
               <tr>
                 <td>
-                  <a x-show="c.custom_link" :href="c.custom_link" target="_blank" style="font-weight:600" x-text="c.name"></a>
-                  <strong x-show="!c.custom_link" x-text="c.name"></strong>
+                  <a x-show="c.custom_link || c.auto_link" :href="c.custom_link || (c.auto_link && c.auto_link.startsWith('__host__') ? 'http://'+window.location.hostname+':'+c.auto_link.split(':')[1] : c.auto_link)" target="_blank" style="font-weight:600" x-text="c.name"></a>
+                  <strong x-show="!c.custom_link && !c.auto_link" x-text="c.name"></strong>
                 </td>
                 <td><span class="mono dim" x-text="c.image" style="font-size:11px"></span></td>
                 <td><span class="bs" :class="'bs-'+c.status" x-text="c.status"></span></td>
@@ -191,7 +191,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
                     </a>
                   </template>
                   <template x-for="ep in c.extra_ports" :key="ep">
-                    <a :href="c.ip ? 'http://'+c.ip+':'+ep : 'http://localhost:'+ep" target="_blank" class="plink" x-text="ep"></a>
+                    <a :href="'http://'+(c.host_mode ? window.location.hostname : (c.ip || window.location.hostname))+':'+ep" target="_blank" class="plink" x-text="ep"></a>
                   </template>
                 </td>
                 <td>

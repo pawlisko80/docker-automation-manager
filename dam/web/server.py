@@ -84,22 +84,57 @@ def _cfg_to_dict(cfg: ContainerConfig) -> dict:
     tags = [t.strip() for t in labels.get("dockpeek.tags","").split(",") if t.strip()]
     tags += [t.strip() for t in labels.get("dam.tags","").split(",") if t.strip()]
 
-    # Extra ports: label-defined first, then fall back to ExposedPorts for macvlan containers
+    # Extra ports: label-defined > ExposedPorts > well-known port map
     label_ports = [p.strip() for p in (labels.get("dockpeek.ports") or labels.get("dam.ports","")).split(",") if p.strip()]
+    _WELL_KNOWN = {
+        "home-assistant": "8123", "homeassistant": "8123",
+        "portainer": "9000", "grafana": "3000", "prometheus": "9090",
+        "node-red": "1880", "nodered": "1880", "mosquitto": "1883",
+        "pihole": "80", "adguardhome": "3000", "nextcloud": "80",
+        "jellyfin": "8096", "plex": "32400", "emby": "8096",
+        "sonarr": "8989", "radarr": "7878", "lidarr": "8686",
+        "prowlarr": "9696", "bazarr": "6767", "readarr": "8787",
+        "overseerr": "5055", "transmission": "9091", "deluge": "8112",
+        "nzbget": "6789", "sabnzbd": "8080",
+        "uptime-kuma": "3001", "vaultwarden": "80", "gitea": "3000",
+    }
     exposed_ports = []
-    if not cfg.ports and not label_ports and cfg.primary_ip():
-        # macvlan/static-IP container with no published ports — show ExposedPorts from image config
+    if not cfg.ports and not label_ports:
+        _SKIP = {"6881", "1900", "5353"}
         for ep in (cfg.exposed_ports or []):
             port_num = ep.split("/")[0]
-            if port_num:
+            if port_num and port_num not in _SKIP:
                 exposed_ports.append(port_num)
+        if not exposed_ports:
+            image_lower = cfg.image.lower().split(":")[0].split("/")[-1]
+            for key, port in _WELL_KNOWN.items():
+                if key in image_lower:
+                    exposed_ports.append(port)
+                    break
 
+    container_ip = cfg.primary_ip() or ("__host__" if cfg.network_mode == "host" else None)
+
+    # Build auto_link from resolved IP + first available port
+    def _make_auto_link(ip, port_list, extra_list):
+        port = (port_list[0]["host"] if port_list else None) or (extra_list[0] if extra_list else None)
+        if not port:
+            return None
+        host = ip if ip and ip != "__host__" else None
+        # host_mode: link built in frontend using window.location.hostname
+        if not host and cfg.network_mode != "host":
+            return None
+        if cfg.network_mode == "host":
+            return f"__host__:{port}"
+        https = port in ("443", "8443", "9443")
+        scheme = "https" if https else "http"
+        return f"{scheme}://{host}:{port}"
     return {"name": cfg.name, "image": cfg.image, "image_id": cfg.image_id[:19] if cfg.image_id else "",
             "status": cfg.status, "restart_policy": cfg.restart_policy, "network_mode": cfg.network_mode,
-            "ip": cfg.primary_ip(), "network": cfg.primary_network(), "binds": cfg.binds,
+            "ip": cfg.primary_ip(), "host_mode": cfg.network_mode == "host", "network": cfg.primary_network(), "binds": cfg.binds,
             "env": cfg.env, "privileged": cfg.privileged, "version_strategy": cfg.version_strategy,
             "ports": ports, "tags": tags,
             "custom_link": labels.get("dockpeek.link") or labels.get("dam.link"),
+            "auto_link": _make_auto_link(container_ip, ports, label_ports or exposed_ports),
             "extra_ports": label_ports or exposed_ports,
             "labels": labels}
 
