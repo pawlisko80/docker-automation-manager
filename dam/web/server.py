@@ -110,28 +110,29 @@ def _cfg_to_dict(cfg: ContainerConfig) -> dict:
 
     exposed_ports = []
     if not cfg.ports and not label_ports:
-        _SKIP = {"6881", "6882", "1900", "5353", "51820"}
-        _UI_PORTS = {"80","443","3000","3001","4000","5000","6052","8000","8008",
-                     "8080","8081","8096","8123","8443","8888","9000","9090","9091","9443"}
-        _raw = []
-        for ep in (cfg.exposed_ports or []):
-            port_num = ep.split("/")[0]
-            if port_num and port_num not in _SKIP:
-                _raw.append(port_num)
-        # env var port wins, then UI ports first
         if env_port:
+            # Env var is authoritative — use it exclusively
             exposed_ports.append(env_port)
-        seen = {env_port} if env_port else set()
-        for p in sorted(_raw, key=lambda x: (0 if x in _UI_PORTS else 1, int(x) if x.isdigit() else 0)):
-            if p not in seen:
-                seen.add(p)
-                exposed_ports.append(p)
-        if not exposed_ports:
-            image_lower = cfg.image.lower().split(":")[0].split("/")[-1]
-            for key, port in _WELL_KNOWN.items():
-                if key in image_lower:
-                    exposed_ports.append(port)
-                    break
+        else:
+            _SKIP = {"6881", "6882", "1900", "5353", "51820"}
+            _UI_PORTS = {"80","443","3000","3001","4000","5000","6052","8000","8008",
+                         "8080","8081","8096","8123","8443","8888","9000","9090","9091","9443"}
+            _raw = []
+            for ep in (cfg.exposed_ports or []):
+                port_num = ep.split("/")[0]
+                if port_num and port_num not in _SKIP:
+                    _raw.append(port_num)
+            seen = set()
+            for p in sorted(_raw, key=lambda x: (0 if x in _UI_PORTS else 1, int(x) if x.isdigit() else 0)):
+                if p not in seen:
+                    seen.add(p)
+                    exposed_ports.append(p)
+            if not exposed_ports:
+                image_lower = cfg.image.lower().split(":")[0].split("/")[-1]
+                for key, port in _WELL_KNOWN.items():
+                    if key in image_lower:
+                        exposed_ports.append(port)
+                        break
 
     container_ip = cfg.primary_ip() or ("__host__" if cfg.network_mode == "host" else None)
 
