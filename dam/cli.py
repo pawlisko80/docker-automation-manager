@@ -73,18 +73,11 @@ def _load_context(config: Optional[str]):
 @click.option("--eol-check",      is_flag=True, help="Check for deprecated or EOL images")
 @click.option("--format", "fmt",  default="dam-yaml", help="Export format: dam-yaml | docker-run | compose")
 @click.option("--output", "-o",   default=None,  help="Output directory for exports")
-@click.option("--web",            is_flag=True, help="Launch web UI")
-@click.option("--host",           default="127.0.0.1", help="Web UI host (default: 127.0.0.1)")
-@click.option("--port", "webport",default=8080, type=int, help="Web UI port (default: 8080)")
-@click.option("--install-daemon", is_flag=True, help="Install DAM as a scheduled daemon")
 @click.option("--web",          is_flag=True, help="Launch web UI")
-@click.option("--host",         default="127.0.0.1", help="Web UI bind host (default: 127.0.0.1)")
+@click.option("--host",         default="127.0.0.1", help="Web UI bind host (use 0.0.0.0 for network access)")
 @click.option("--port",         default=8080, type=int, help="Web UI port (default: 8080)")
-@click.option("--web-passwd",   is_flag=True, help="Set web UI password (interactive)")
-@click.option("--web",          is_flag=True, help="Launch web UI")
-@click.option("--web-host",     default="127.0.0.1", help="Web UI bind address (use 0.0.0.0 for network access)")
-@click.option("--web-port",     default=8080, type=int, help="Web UI port (default: 8080)")
 @click.option("--web-passwd",   is_flag=True, help="Set web UI username and password")
+@click.option("--install-daemon", is_flag=True, help="Install DAM as a scheduled daemon")
 @click.option("--version",      is_flag=True, help="Print version and exit")
 @click.pass_context
 def cli(ctx, config, status, update, drift, prune, dry_run, yes, all,
@@ -131,7 +124,7 @@ def cli(ctx, config, status, update, drift, prune, dry_run, yes, all,
         if eol_check:
             _cmd_eol_check(config)
         if web:
-            _cmd_web(config, host=host, port=webport)
+            _cmd_web(config, host=host, port=port)
         return
 
     # No flags — launch interactive TUI
@@ -631,17 +624,11 @@ def _cmd_eol_check(config) -> None:
         sys.exit(1)
 
 
-def _cmd_web(config, host: str = "127.0.0.1", port: int = 8080) -> None:
-    """Launch the DAM web UI."""
-    from dam.web.server import run_web
-    from pathlib import Path
-    config_path = Path(config) if config else None
-    run_web(host=host, port=port, config_path=config_path)
-
 
 def _cmd_set_web_passwd(config) -> None:
     """Interactive: set web UI username/password in settings.yaml."""
-    from dam.web.auth import hash_password
+    import hashlib as _hl
+    import secrets as _sec
     from pathlib import Path
     import yaml as _yaml
 
@@ -651,7 +638,10 @@ def _cmd_set_web_passwd(config) -> None:
     username = click.prompt("Username", default="admin")
     password = click.prompt("Password", hide_input=True, confirmation_prompt=True)
 
-    hashed = hash_password(password)
+    # Always write sha256:salt:hash — works without bcrypt dependency
+    salt = _sec.token_hex(16)
+    h = _hl.sha256(f"{salt}{password}".encode()).hexdigest()
+    hashed = f"sha256:{salt}:{h}"
 
     cfg_path = Path(config) if config else Path(__file__).parent.parent / "config" / "settings.yaml"
     settings = {}
@@ -661,17 +651,12 @@ def _cmd_set_web_passwd(config) -> None:
 
     if "web" not in settings:
         settings["web"] = {}
-    if "auth" not in settings["web"]:
-        settings["web"]["auth"] = []
 
-    # Replace existing entry for this username or append
-    auth_list = settings["web"]["auth"]
-    existing = next((i for i, u in enumerate(auth_list) if u.get("username") == username), None)
-    entry = {"username": username, "password_hash": hashed}
-    if existing is not None:
-        auth_list[existing] = entry
-    else:
-        auth_list.append(entry)
+    # Write flat format: web.username + web.password_hash
+    settings["web"]["username"] = username
+    settings["web"]["password_hash"] = hashed
+    # Remove old auth list format if present
+    settings["web"].pop("auth", None)
 
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
     with open(cfg_path, "w") as f:
@@ -683,23 +668,6 @@ def _cmd_set_web_passwd(config) -> None:
     console.print(f"Start web UI with: [cyan]dam --web[/cyan]")
 
 
-def _cmd_web(config, host: str = "127.0.0.1", port: int = 8080) -> None:
-    """Launch the DAM web UI."""
-    from dam.web.server import run_server
-    from pathlib import Path
-    config_path = Path(config) if config else None
-    console.print(f"[bold cyan]🐳 DAM Web UI[/bold cyan]")
-    console.print(f"  URL:      [cyan]http://{host}:{port}[/cyan]")
-    console.print(f"  API docs: [dim]http://{host}:{port}/api/docs[/dim]")
-    console.print(f"  Press [bold]Ctrl+C[/bold] to stop\n")
-    try:
-        run_server(host=host, port=port, config_path=config_path)
-    except KeyboardInterrupt:
-        console.print("\n[dim]Web server stopped.[/dim]")
-
-# ----------------------------------------------------------------
-# Entry point
-# ----------------------------------------------------------------
 
 def main():
     cli(obj={})

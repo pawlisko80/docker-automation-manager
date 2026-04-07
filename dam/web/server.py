@@ -41,22 +41,35 @@ async def startup():
             _settings = yaml.safe_load(f) or {}
     except FileNotFoundError:
         _settings = {}
+    _settings["_config_path"] = str(cfg_path)
     _snapshot_manager = SnapshotManager(retention=_settings.get("dam", {}).get("snapshot_retention", 10))
 
 def _hash_password(p): return hashlib.sha256(p.encode()).hexdigest()
+
+def _verify_password(password: str, stored_hash: str) -> bool:
+    """Verify a password against a stored hash.
+    Supports: sha256:salt:hash (preferred), bcrypt ($2b$...), plain sha256 hex.
+    """
+    if not stored_hash:
+        return True
+    if stored_hash.startswith("sha256:"):
+        parts = stored_hash.split(":", 2)
+        if len(parts) == 3:
+            _, salt, h = parts
+            return secrets.compare_digest(hashlib.sha256(f"{salt}{password}".encode()).hexdigest(), h)
+    if stored_hash.startswith("$2b$") or stored_hash.startswith("$2a$"):
+        try:
+            import bcrypt
+            return bcrypt.checkpw(password.encode(), stored_hash.encode())
+        except ImportError:
+            pass  # bcrypt not installed, fall through
+    return secrets.compare_digest(_hash_password(password), stored_hash)
 
 def _check_credentials(username, password):
     w = _settings.get("web", {})
     cfg_user = w.get("username", "admin")
     cfg_hash = w.get("password_hash", "")
-    if not cfg_hash: return username == cfg_user
-    if cfg_hash.startswith("sha256:"):
-        parts = cfg_hash.split(":", 2)
-        if len(parts) == 3:
-            import hashlib as _hl
-            _, salt, h = parts
-            return username == cfg_user and secrets.compare_digest(_hl.sha256(f"{salt}{password}".encode()).hexdigest(), h)
-    return username == cfg_user and _hash_password(password) == cfg_hash
+    return username == cfg_user and _verify_password(password, cfg_hash)
 
 def _is_authenticated(request: Request):
     token = request.cookies.get("dam_session")
@@ -412,6 +425,90 @@ async def export_containers(req: ExportRequest, _=Depends(require_auth)):
             headers={"Content-Disposition": f'attachment; filename="{filename}"'})
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
+
+class ImportRequest(BaseModel):
+    yaml_content: str
+    dry_run: bool = True
+    overwrite: bool = False
+
+@app.post("/api/import/preview")
+async def import_preview(req: ImportRequest, _=Depends(require_auth)):
+    """Parse YAML and return what would be imported without doing anything."""
+    try:
+        import tempfile
+        from dam.core.importer import load_import_file
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            f.write(req.yaml_content)
+            tmp = Path(f.name)
+        try:
+            meta, configs = load_import_file(tmp)
+        finally:
+            tmp.unlink(missing_ok=True)
+        return {"ok": True, "meta": meta, "containers": [
+            {"name": c.name, "image": c.image, "network_mode": c.network_mode,
+             "ip": c.primary_ip(), "restart_policy": c.restart_policy}
+            for c in configs
+        ]}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/import/run")
+async def import_run(req: ImportRequest, _=Depends(require_auth)):
+    """Actually recreate containers from YAML."""
+    try:
+        import tempfile
+        from dam.core.importer import load_import_file, Importer
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            f.write(req.yaml_content)
+            tmp = Path(f.name)
+        try:
+            meta, configs = load_import_file(tmp)
+        finally:
+            tmp.unlink(missing_ok=True)
+        importer = Importer(_platform, dry_run=req.dry_run, overwrite=req.overwrite)
+        results = importer.import_configs(configs)
+        summary = Importer.summarize(results)
+        return {"ok": True, "results": [
+            {"name": r.container_name, "status": r.status.value,
+             "image": r.image, "error": r.error}
+            for r in results
+        ], "summary": summary}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class PasswordChangeRequest(BaseModel):
+    current_password: str
+    new_password: str
+    username: Optional[str] = None
+
+@app.post("/api/auth/change-password")
+async def change_password(req: PasswordChangeRequest, request: Request, _=Depends(require_auth)):
+    """Change the web UI password."""
+    # Verify current password first
+    stored = _settings.get("web", {})
+    username = stored.get("username", "admin")
+    stored_hash = stored.get("password_hash", "")
+    # Re-use existing check logic
+    if not _verify_password(req.current_password, stored_hash):
+        raise HTTPException(status_code=401, detail="Current password is incorrect")
+    if len(req.new_password) < 6:
+        raise HTTPException(status_code=400, detail="New password must be at least 6 characters")
+    # Save new hash
+    import secrets as _sec
+    salt = _sec.token_hex(16)
+    new_hash = f"sha256:{salt}:{hashlib.sha256((salt + req.new_password).encode()).hexdigest()}"
+    _settings["web"]["password_hash"] = new_hash
+    if req.username:
+        _settings["web"]["username"] = req.username
+    cfg_path = Path(_settings.get("_config_path", "/app/config/settings.yaml"))
+    try:
+        import yaml as _yaml
+        save_settings = {k: v for k, v in _settings.items() if not k.startswith("_")}
+        cfg_path.parent.mkdir(parents=True, exist_ok=True)
+        cfg_path.write_text(_yaml.dump(save_settings, default_flow_style=False))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Saved in memory but failed to write config: {e}")
+    return {"ok": True, "message": "Password updated successfully"}
 
 @app.get("/api/dam/version")
 async def dam_version_check(_=Depends(require_auth)):
