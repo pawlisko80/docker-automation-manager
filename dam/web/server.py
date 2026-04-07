@@ -97,7 +97,6 @@ def _cfg_to_dict(cfg: ContainerConfig) -> dict:
         "overseerr": "5055", "transmission": "9091", "deluge": "8112",
         "nzbget": "6789", "sabnzbd": "8080",
         "uptime-kuma": "3001", "vaultwarden": "80", "gitea": "3000",
-        "peanut": "8080", "nut-upsd": "8080", "nut_upsd": "8080",
     }
     # Check well-known port env vars before anything else
     _PORT_ENV_KEYS = ["WEB_PORT", "HTTP_PORT", "PORT", "APP_PORT", "SERVER_PORT",
