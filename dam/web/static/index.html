@@ -87,7 +87,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
 [x-cloak]{display:none}
 </style>
 </head>
-<body x-data="dam()" x-init="init()">
+<body x-data="dam()" x-init="init()" :class="dark ? '' : 'light'">
 
 <!-- LOGIN -->
 <div class="lw" x-show="!auth" style="display:flex">
