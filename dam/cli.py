@@ -60,25 +60,25 @@ def _load_context(config: Optional[str]):
 
 @click.group(invoke_without_command=True)
 @click.option("--config", "-c", default=None, help="Path to settings.yaml")
-@click.option("--status",       is_flag=True, help="Show container status and exit")
-@click.option("--update",       is_flag=True, help="Run update cycle")
-@click.option("--drift",        is_flag=True, help="Run drift detection")
-@click.option("--prune",        is_flag=True, help="Prune unused images")
-@click.option("--dry-run",      is_flag=True, help="Simulate actions without making changes")
-@click.option("--yes",  "-y",   is_flag=True, help="Skip confirmation prompts")
-@click.option("--all",  "-a",   is_flag=True, help="(--prune) Remove all unreferenced images")
-@click.option("--container",    default=None,  help="Target a single container by name")
-@click.option("--export",         is_flag=True, help="Export container configs")
-@click.option("--import-file",    default=None,  help="Import containers from a DAM YAML file")
-@click.option("--eol-check",      is_flag=True, help="Check for deprecated or EOL images")
-@click.option("--format", "fmt",  default="dam-yaml", help="Export format: dam-yaml | docker-run | compose")
-@click.option("--output", "-o",   default=None,  help="Output directory for exports")
-@click.option("--web",          is_flag=True, help="Launch web UI")
-@click.option("--host",         default="127.0.0.1", help="Web UI bind host (use 0.0.0.0 for network access)")
-@click.option("--port",         default=8080, type=int, help="Web UI port (default: 8080)")
-@click.option("--web-passwd",   is_flag=True, help="Set web UI username and password")
+@click.option("--status", is_flag=True, help="Show container status and exit")
+@click.option("--update", is_flag=True, help="Run update cycle")
+@click.option("--drift", is_flag=True, help="Run drift detection")
+@click.option("--prune", is_flag=True, help="Prune unused images")
+@click.option("--dry-run", is_flag=True, help="Simulate actions without making changes")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompts")
+@click.option("--all", "-a", is_flag=True, help="(--prune) Remove all unreferenced images")
+@click.option("--container", default=None, help="Target a single container by name")
+@click.option("--export", is_flag=True, help="Export container configs")
+@click.option("--import-file", default=None, help="Import containers from a DAM YAML file")
+@click.option("--eol-check", is_flag=True, help="Check for deprecated or EOL images")
+@click.option("--format", "fmt", default="dam-yaml", help="Export format: dam-yaml | docker-run | compose")
+@click.option("--output", "-o", default=None, help="Output directory for exports")
+@click.option("--web", is_flag=True, help="Launch web UI")
+@click.option("--host", default="127.0.0.1", help="Web UI bind host (use 0.0.0.0 for network access)")
+@click.option("--port", default=8080, type=int, help="Web UI port (default: 8080)")
+@click.option("--web-passwd", is_flag=True, help="Set web UI username and password")
 @click.option("--install-daemon", is_flag=True, help="Install DAM as a scheduled daemon")
-@click.option("--version",      is_flag=True, help="Print version and exit")
+@click.option("--version", is_flag=True, help="Print version and exit")
 @click.pass_context
 def cli(ctx, config, status, update, drift, prune, dry_run, yes, all,
         container, install_daemon, export, import_file, eol_check,
@@ -93,13 +93,13 @@ def cli(ctx, config, status, update, drift, prune, dry_run, yes, all,
     # If any action flag is set, run headless
     if web or web_passwd or status or update or drift or prune or install_daemon or export or import_file or eol_check:
         ctx.ensure_object(dict)
-        ctx.obj["config"]     = config
-        ctx.obj["dry_run"]    = dry_run
-        ctx.obj["yes"]        = yes
-        ctx.obj["all"]        = all
-        ctx.obj["container"]  = container
-        ctx.obj["fmt"]        = fmt
-        ctx.obj["output"]     = output
+        ctx.obj["config"] = config
+        ctx.obj["dry_run"] = dry_run
+        ctx.obj["yes"] = yes
+        ctx.obj["all"] = all
+        ctx.obj["container"] = container
+        ctx.obj["fmt"] = fmt
+        ctx.obj["output"] = output
 
         if web_passwd:
             _cmd_set_web_passwd(config)
@@ -315,7 +315,6 @@ def _cmd_prune(
         sys.exit(1)
 
 
-
 def _cmd_web(config, host: str = "127.0.0.1", port: int = 8080) -> None:
     """Launch the DAM web UI."""
     try:
@@ -356,7 +355,7 @@ def _cmd_web_passwd(config) -> None:
 
     username = click.prompt("Username", default=settings.get("web", {}).get("username", "admin"))
     password = getpass.getpass("Password: ")
-    confirm  = getpass.getpass("Confirm password: ")
+    confirm = getpass.getpass("Confirm password: ")
 
     if password != confirm:
         console.print("[bold red]Passwords do not match.[/bold red]")
@@ -377,9 +376,9 @@ def _cmd_web_passwd(config) -> None:
     with open(config_path, "w") as f:
         yaml.dump(settings, f, default_flow_style=False, sort_keys=False)
 
-    console.print(f"[bold green]✓[/bold green] Credentials saved. Start the web UI with:")
-    console.print(f"  [cyan]dam --web[/cyan]")
-    console.print(f"  [cyan]dam --web --host 0.0.0.0  [/cyan][dim]# accessible from your network[/dim]")
+    console.print("[bold green]✓[/bold green] Credentials saved. Start the web UI with:")
+    console.print("  [cyan]dam --web[/cyan]")
+    console.print("  [cyan]dam --web --host 0.0.0.0  [/cyan][dim]# accessible from your network[/dim]")
 
 
 def _cmd_install_daemon(config: Optional[str]) -> None:
@@ -445,7 +444,7 @@ def _install_cron(platform, cron_line: str) -> None:
 
 def _install_systemd(dam_path: Path, schedule: str) -> None:
     """Create systemd timer unit for DAM."""
-    service = f"""[Unit]
+    service = """[Unit]
 Description=Docker Automation Manager update cycle
 After=docker.service
 Requires=docker.service
@@ -454,7 +453,7 @@ Requires=docker.service
 Type=oneshot
 ExecStart={dam_path} --update --yes
 """
-    timer = f"""[Unit]
+    timer = """[Unit]
 Description=Docker Automation Manager scheduled timer
 
 [Timer]
@@ -465,7 +464,7 @@ Persistent=true
 WantedBy=timers.target
 """
     service_path = Path("/etc/systemd/system/dam.service")
-    timer_path   = Path("/etc/systemd/system/dam.timer")
+    timer_path = Path("/etc/systemd/system/dam.timer")
 
     try:
         service_path.write_text(service)
@@ -478,7 +477,6 @@ WantedBy=timers.target
     except PermissionError:
         console.print("[bold red]Permission denied — run as root.[/bold red]")
         sys.exit(1)
-
 
 
 def _cmd_export(
@@ -529,7 +527,7 @@ def _cmd_import(
     yes: bool = False,
 ) -> None:
     """Import containers from a DAM YAML export file."""
-    from dam.core.importer import Importer, load_import_file, ImportStatus
+    from dam.core.importer import Importer, load_import_file
     from pathlib import Path
 
     if not file_path:
@@ -601,8 +599,8 @@ def _cmd_eol_check(config) -> None:
             for r in warnings:
                 icons = {
                     DeprecationStatus.DEPRECATED: "⚠",
-                    DeprecationStatus.ARCHIVED:   "📦",
-                    DeprecationStatus.EOL:        "☠",
+                    DeprecationStatus.ARCHIVED: "📦",
+                    DeprecationStatus.EOL: "☠",
                 }
                 icon = icons.get(r.status, "?")
                 console.print(f"{icon} [bold]{r.container_name}[/bold] ({r.image})")
@@ -622,7 +620,6 @@ def _cmd_eol_check(config) -> None:
     except Exception as e:
         console.print(f"[bold red]Error:[/bold red] {e}")
         sys.exit(1)
-
 
 
 def _cmd_set_web_passwd(config) -> None:
@@ -665,8 +662,7 @@ def _cmd_set_web_passwd(config) -> None:
     console.print(f"[green]✓[/green] Password set for user [cyan]{username}[/cyan]")
     console.print(f"[dim]Saved to {cfg_path}[/dim]")
     console.print()
-    console.print(f"Start web UI with: [cyan]dam --web[/cyan]")
-
+    console.print("Start web UI with: [cyan]dam --web[/cyan]")
 
 
 def main():

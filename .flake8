@@ -1,0 +1,10 @@
+[flake8]
+max-line-length = 120
+per-file-ignores =
+    dam/core/deprecation.py: E221
+    dam/core/drift.py: E221
+    dam/core/importer.py: E221
+    dam/core/updater.py: E221
+    dam/daemon/service.py: E221
+    dam/web/write_html.py: E501
+    dam/web/static_html.py: E501

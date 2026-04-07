@@ -2,11 +2,15 @@
 dam/web/server.py - FastAPI web server for Docker Automation Manager v0.4.0
 """
 from __future__ import annotations
-import asyncio, hashlib, json, secrets, time
+import asyncio
+import hashlib
+import json
+import secrets
+import time
 from pathlib import Path
 from typing import Optional, AsyncGenerator
 import yaml
-from fastapi import FastAPI, HTTPException, Depends, Request, Response, status
+from fastapi import FastAPI, HTTPException, Depends, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
@@ -21,7 +25,12 @@ from dam.core.updater import Updater
 from dam.platform.detector import detect_platform
 
 app = FastAPI(title="Docker Automation Manager", version=__version__, docs_url="/api/docs")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"])
 
 _platform = None
 _snapshot_manager = None
@@ -30,6 +39,7 @@ _config_path = None
 _sse_queues: dict[str, asyncio.Queue] = {}
 _sessions: dict[str, float] = {}
 SESSION_TTL = 3600 * 8
+
 
 @app.on_event("startup")
 async def startup():
@@ -44,7 +54,9 @@ async def startup():
     _settings["_config_path"] = str(cfg_path)
     _snapshot_manager = SnapshotManager(retention=_settings.get("dam", {}).get("snapshot_retention", 10))
 
+
 def _hash_password(p): return hashlib.sha256(p.encode()).hexdigest()
+
 
 def _verify_password(password: str, stored_hash: str) -> bool:
     """Verify a password against a stored hash.
@@ -65,40 +77,50 @@ def _verify_password(password: str, stored_hash: str) -> bool:
             pass  # bcrypt not installed, fall through
     return secrets.compare_digest(_hash_password(password), stored_hash)
 
+
 def _check_credentials(username, password):
     w = _settings.get("web", {})
     cfg_user = w.get("username", "admin")
     cfg_hash = w.get("password_hash", "")
     return username == cfg_user and _verify_password(password, cfg_hash)
 
+
 def _is_authenticated(request: Request):
     token = request.cookies.get("dam_session")
-    if not token: return False
+    if not token:
+        return False
     expiry = _sessions.get(token, 0)
     if time.time() > expiry:
-        _sessions.pop(token, None); return False
+        _sessions.pop(token, None)
+        return False
     _sessions[token] = time.time() + SESSION_TTL
     return True
+
 
 def require_auth(request: Request):
     if not _is_authenticated(request):
         raise HTTPException(status_code=401, detail="Not authenticated")
 
+
 def _cfg_to_dict(cfg: ContainerConfig) -> dict:
     ports = []
     for p in cfg.ports:
         hp = p.host_port
-        https = hp in ("443","8443","9443") or p.container_port.startswith("443")
+        https = hp in ("443", "8443", "9443") or p.container_port.startswith("443")
         scheme = "https" if https else "http"
         ip = cfg.primary_ip() or "localhost"
         ports.append({"container": p.container_port, "host": hp, "host_ip": p.host_ip,
                       "link": f"{scheme}://{ip}:{hp}" if hp else None, "https": https})
     labels = cfg.labels or {}
-    tags = [t.strip() for t in labels.get("dockpeek.tags","").split(",") if t.strip()]
-    tags += [t.strip() for t in labels.get("dam.tags","").split(",") if t.strip()]
+    tags = [t.strip() for t in labels.get("dockpeek.tags", "").split(",") if t.strip()]
+    tags += [t.strip() for t in labels.get("dam.tags", "").split(",") if t.strip()]
 
     # Extra ports: label-defined > ExposedPorts > well-known port map
-    label_ports = [p.strip() for p in (labels.get("dockpeek.ports") or labels.get("dam.ports","")).split(",") if p.strip()]
+    label_ports = [
+        p.strip() for p in (
+            labels.get("dockpeek.ports") or labels.get(
+                "dam.ports",
+                "")).split(",") if p.strip()]
     _WELL_KNOWN = {
         "home-assistant": "8123", "homeassistant": "8123",
         "portainer": "9000", "grafana": "3000", "prometheus": "9090",
@@ -128,8 +150,8 @@ def _cfg_to_dict(cfg: ContainerConfig) -> dict:
             exposed_ports.append(env_port)
         else:
             _SKIP = {"6881", "6882", "1900", "5353", "51820"}
-            _UI_PORTS = {"80","443","3000","3001","4000","5000","6052","8000","8008",
-                         "8080","8081","8096","8123","8443","8888","9000","9090","9091","9443"}
+            _UI_PORTS = {"80", "443", "3000", "3001", "4000", "5000", "6052", "8000", "8008",
+                         "8080", "8081", "8096", "8123", "8443", "8888", "9000", "9090", "9091", "9443"}
             _raw = []
             for ep in (cfg.exposed_ports or []):
                 port_num = ep.split("/")[0]
@@ -163,24 +185,42 @@ def _cfg_to_dict(cfg: ContainerConfig) -> dict:
         https = port in ("443", "8443", "9443")
         scheme = "https" if https else "http"
         return f"{scheme}://{host}:{port}"
-    return {"name": cfg.name, "image": cfg.image, "image_id": cfg.image_id[:19] if cfg.image_id else "",
-            "status": cfg.status, "restart_policy": cfg.restart_policy, "network_mode": cfg.network_mode,
-            "ip": cfg.primary_ip(), "host_mode": cfg.network_mode == "host", "network": cfg.primary_network(), "binds": cfg.binds,
-            "env": cfg.env, "privileged": cfg.privileged, "version_strategy": cfg.version_strategy,
-            "ports": ports, "tags": tags,
+    return {"name": cfg.name,
+            "image": cfg.image,
+            "image_id": cfg.image_id[:19] if cfg.image_id else "",
+            "status": cfg.status,
+            "restart_policy": cfg.restart_policy,
+            "network_mode": cfg.network_mode,
+            "ip": cfg.primary_ip(),
+            "host_mode": cfg.network_mode == "host",
+            "network": cfg.primary_network(),
+            "binds": cfg.binds,
+            "env": cfg.env,
+            "privileged": cfg.privileged,
+            "version_strategy": cfg.version_strategy,
+            "ports": ports,
+            "tags": tags,
             "custom_link": labels.get("dockpeek.link") or labels.get("dam.link"),
-            "auto_link": _make_auto_link(container_ip, ports, label_ports or exposed_ports),
+            "auto_link": _make_auto_link(container_ip,
+                                         ports,
+                                         label_ports or exposed_ports),
             "extra_ports": label_ports or exposed_ports,
             "labels": labels}
 
+
 class LoginRequest(BaseModel):
-    username: str; password: str
+    username: str
+    password: str
+
 
 class UpdateRequest(BaseModel):
     containers: list[str] = []
 
+
 class ExportRequest(BaseModel):
-    containers: list[str] = []; fmt: str = "dam-yaml"
+    containers: list[str] = []
+    fmt: str = "dam-yaml"
+
 
 @app.post("/auth/login")
 async def login(req: LoginRequest, response: Response):
@@ -191,20 +231,25 @@ async def login(req: LoginRequest, response: Response):
     response.set_cookie(key="dam_session", value=token, httponly=True, max_age=SESSION_TTL, samesite="lax")
     return {"status": "ok"}
 
+
 @app.post("/auth/logout")
 async def logout(request: Request, response: Response):
     token = request.cookies.get("dam_session")
-    if token: _sessions.pop(token, None)
+    if token:
+        _sessions.pop(token, None)
     response.delete_cookie("dam_session")
     return {"status": "ok"}
+
 
 @app.get("/auth/status")
 async def auth_status(request: Request):
     return {"authenticated": _is_authenticated(request)}
 
+
 @app.get("/health")
 async def health():
     return {"status": "ok", "version": __version__, "platform": _platform.name if _platform else "unknown"}
+
 
 @app.get("/api/containers")
 async def get_containers(request: Request, _=Depends(require_auth)):
@@ -215,30 +260,39 @@ async def get_containers(request: Request, _=Depends(require_auth)):
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
 
+
 def _container_action(name: str, action: str) -> dict:
     try:
         import docker
         from docker.errors import NotFound
         client = docker.from_env()
-        try: container = client.containers.get(name)
-        except NotFound: raise HTTPException(status_code=404, detail=f"Container not found: {name}")
+        try:
+            container = client.containers.get(name)
+        except NotFound:
+            raise HTTPException(status_code=404, detail=f"Container not found: {name}")
         getattr(container, action)()
         container.reload()
         return {"name": name, "action": action, "status": container.status}
-    except HTTPException: raise
-    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/api/containers/{name}/start")
 async def container_start(name: str, _=Depends(require_auth)):
     return _container_action(name, "start")
 
+
 @app.post("/api/containers/{name}/stop")
 async def container_stop(name: str, _=Depends(require_auth)):
     return _container_action(name, "stop")
 
+
 @app.post("/api/containers/{name}/restart")
 async def container_restart(name: str, _=Depends(require_auth)):
     return _container_action(name, "restart")
+
 
 @app.get("/api/containers/{name}/logs")
 async def container_logs(name: str, tail: int = 200, follow: bool = False,
@@ -261,7 +315,8 @@ async def container_logs(name: str, tail: int = 200, follow: bool = False,
             log_stream = container.logs(stream=follow, follow=follow, tail=tail, timestamps=True)
             if follow:
                 for chunk in log_stream:
-                    if request and await request.is_disconnected(): break
+                    if request and await request.is_disconnected():
+                        break
                     line = chunk.decode("utf-8", errors="replace").rstrip()
                     yield "data: " + json.dumps({"line": line}) + "\n\n"
 
@@ -278,6 +333,7 @@ async def container_logs(name: str, tail: int = 200, follow: bool = False,
     return StreamingResponse(log_generator(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
+
 @app.get("/api/eol")
 async def get_eol(request: Request, _=Depends(require_auth)):
     try:
@@ -286,16 +342,18 @@ async def get_eol(request: Request, _=Depends(require_auth)):
         checker = DeprecationChecker()
         results = checker.check_all(configs)
         return {"results": [{"container_name": r.container_name, "image": r.image,
-            "status": r.status.value, "severity": r.severity.value, "reason": r.reason,
-            "alternatives": [{"name": a.name, "url": a.url, "note": a.note} for a in r.alternatives]}
-            for r in results], "summary": checker.summary(results)}
+                             "status": r.status.value, "severity": r.severity.value, "reason": r.reason,
+                             "alternatives": [{"name": a.name, "url": a.url, "note": a.note} for a in r.alternatives]}
+                            for r in results], "summary": checker.summary(results)}
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
 
+
 @app.get("/api/snapshots")
 async def get_snapshots(_=Depends(require_auth)):
-    return {"snapshots": [{"id": i, "filename": p.name, "size_kb": round(p.stat().st_size/1024, 1)}
-        for i, p in enumerate(_snapshot_manager.list_snapshots())]}
+    return {"snapshots": [{"id": i, "filename": p.name, "size_kb": round(p.stat().st_size / 1024, 1)}
+                          for i, p in enumerate(_snapshot_manager.list_snapshots())]}
+
 
 @app.post("/api/snapshots")
 async def take_snapshot(_=Depends(require_auth)):
@@ -307,17 +365,21 @@ async def take_snapshot(_=Depends(require_auth)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.get("/api/snapshots/{snapshot_id}")
 async def get_snapshot(snapshot_id: int, _=Depends(require_auth)):
     snaps = _snapshot_manager.list_snapshots()
-    if snapshot_id >= len(snaps): raise HTTPException(status_code=404, detail="Not found")
+    if snapshot_id >= len(snaps):
+        raise HTTPException(status_code=404, detail="Not found")
     meta, configs = _snapshot_manager.load(snaps[snapshot_id])
     return {"meta": meta, "containers": [_cfg_to_dict(c) for c in configs]}
+
 
 @app.get("/api/drift")
 async def get_drift(_=Depends(require_auth)):
     result = _snapshot_manager.load_latest()
-    if not result: return {"has_drift": False, "items": [], "summary": {}, "message": "No snapshots yet"}
+    if not result:
+        return {"has_drift": False, "items": [], "summary": {}, "message": "No snapshots yet"}
     snap_meta, snap_configs = result
     try:
         inspector = Inspector(_platform)
@@ -326,10 +388,11 @@ async def get_drift(_=Depends(require_auth)):
         raise HTTPException(status_code=503, detail=str(e))
     report = DriftDetector().compare(snap_configs, live, f"snapshot ({snap_meta['captured_at']})", "live")
     return {"has_drift": report.has_drift, "summary": report.summary(),
-        "snapshot_label": snap_meta.get("captured_at", "unknown"),
-        "items": [{"container_name": i.container_name, "field": i.field, "severity": i.severity.value,
-            "description": i.description, "old_value": i.old_value, "new_value": i.new_value}
-            for i in report.sorted_by_severity()]}
+            "snapshot_label": snap_meta.get("captured_at", "unknown"),
+            "items": [{"container_name": i.container_name, "field": i.field, "severity": i.severity.value,
+                       "description": i.description, "old_value": i.old_value, "new_value": i.new_value}
+                      for i in report.sorted_by_severity()]}
+
 
 @app.post("/api/update/dry-run")
 async def update_dry_run(req: UpdateRequest, _=Depends(require_auth)):
@@ -339,18 +402,20 @@ async def update_dry_run(req: UpdateRequest, _=Depends(require_auth)):
         configs = [c for c in all_cfgs if not req.containers or c.name in req.containers]
         results = Updater(platform=_platform, dry_run=True, recreate_delay=0).update_all(configs)
         return {"results": [{"container_name": r.container_name, "status": r.status.value,
-            "old_image_id": r.old_image_id[:19] if r.old_image_id else None,
-            "new_image_id": r.new_image_id[:19] if r.new_image_id else None,
-            "would_update": r.status.value == "dry_run", "error": r.error} for r in results],
-            "summary": Updater.summarize(results)}
+                             "old_image_id": r.old_image_id[:19] if r.old_image_id else None,
+                             "new_image_id": r.new_image_id[:19] if r.new_image_id else None,
+                             "would_update": r.status.value == "dry_run", "error": r.error} for r in results],
+                "summary": Updater.summarize(results)}
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
+
 
 @app.post("/api/update/run")
 async def update_run(req: UpdateRequest, _=Depends(require_auth)):
     session_id = secrets.token_hex(16)
     queue: asyncio.Queue = asyncio.Queue()
     _sse_queues[session_id] = queue
+
     async def run():
         try:
             inspector = Inspector(_platform)
@@ -358,17 +423,18 @@ async def update_run(req: UpdateRequest, _=Depends(require_auth)):
             configs = [c for c in all_cfgs if not req.containers or c.name in req.containers]
             _snapshot_manager.save(configs, _platform, label="pre-update-web")
             dam_cfg = _settings.get("dam", {})
+
             def on_progress(name, msg):
-                asyncio.get_event_loop().call_soon_threadsafe(queue.put_nowait,
-                    json.dumps({"type": "progress", "container": name, "message": msg}))
+                asyncio.get_event_loop().call_soon_threadsafe(queue.put_nowait, json.dumps(
+                    {"type": "progress", "container": name, "message": msg}))
             updater = Updater(platform=_platform, dry_run=False,
-                recreate_delay=dam_cfg.get("recreate_delay", 5), progress_callback=on_progress)
+                              recreate_delay=dam_cfg.get("recreate_delay", 5), progress_callback=on_progress)
             results = []
             for cfg in configs:
                 r = updater.update_one(cfg)
                 results.append(r)
                 await queue.put(json.dumps({"type": "result", "container": r.container_name,
-                    "status": r.status.value, "error": r.error}))
+                                            "status": r.status.value, "error": r.error}))
             summary = Updater.summarize(results)
             if dam_cfg.get("auto_prune", True) and summary["updated"] > 0:
                 await queue.put(json.dumps({"type": "progress", "container": "", "message": "Pruning old images..."}))
@@ -382,35 +448,44 @@ async def update_run(req: UpdateRequest, _=Depends(require_auth)):
     asyncio.create_task(run())
     return {"session_id": session_id}
 
+
 @app.get("/api/update/stream/{session_id}")
 async def update_stream(session_id: str, request: Request, _=Depends(require_auth)):
     queue = _sse_queues.get(session_id)
-    if not queue: raise HTTPException(status_code=404, detail="Session not found")
+    if not queue:
+        raise HTTPException(status_code=404, detail="Session not found")
+
     async def gen() -> AsyncGenerator[str, None]:
         while True:
-            if await request.is_disconnected(): break
+            if await request.is_disconnected():
+                break
             try:
                 msg = await asyncio.wait_for(queue.get(), timeout=30)
                 yield f"data: {msg}\n\n"
-                if json.loads(msg).get("type") in ("done", "error"): break
+                if json.loads(msg).get("type") in ("done", "error"):
+                    break
             except asyncio.TimeoutError:
                 yield 'data: {"type":"ping"}\n\n'
     return StreamingResponse(gen(), media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
 
 @app.post("/api/prune/dry-run")
 async def prune_dry_run(_=Depends(require_auth)):
     return Pruner(dry_run=True).list_candidates()
 
+
 @app.post("/api/prune/run")
 async def prune_run(_=Depends(require_auth)):
     result = Pruner(dry_run=False).prune()
     return {"images_removed": len(result.images_removed),
-        "space_reclaimed_human": result.space_reclaimed_human, "errors": result.errors}
+            "space_reclaimed_human": result.space_reclaimed_human, "errors": result.errors}
+
 
 @app.post("/api/export")
 async def export_containers(req: ExportRequest, _=Depends(require_auth)):
-    if req.fmt not in FORMATS: raise HTTPException(status_code=400, detail="Invalid format")
+    if req.fmt not in FORMATS:
+        raise HTTPException(status_code=400, detail="Invalid format")
     try:
         inspector = Inspector(_platform)
         all_cfgs = inspector.inspect_all(settings_containers=_settings.get("containers", {}) or {})
@@ -418,18 +493,21 @@ async def export_containers(req: ExportRequest, _=Depends(require_auth)):
         import tempfile
         with tempfile.TemporaryDirectory() as tmpdir:
             paths = Exporter().export(configs, req.fmt, Path(tmpdir), single_file=True)
-            if not paths: raise HTTPException(status_code=500, detail="Export failed")
+            if not paths:
+                raise HTTPException(status_code=500, detail="Export failed")
             content = paths[0].read_text()
             filename = paths[0].name
         return Response(content=content, media_type="application/octet-stream",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+                        headers={"Content-Disposition": f'attachment; filename="{filename}"'})
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
+
 
 class ImportRequest(BaseModel):
     yaml_content: str
     dry_run: bool = True
     overwrite: bool = False
+
 
 @app.post("/api/import/preview")
 async def import_preview(req: ImportRequest, _=Depends(require_auth)):
@@ -451,6 +529,7 @@ async def import_preview(req: ImportRequest, _=Depends(require_auth)):
         ]}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
 
 @app.post("/api/import/run")
 async def import_run(req: ImportRequest, _=Depends(require_auth)):
@@ -476,17 +555,18 @@ async def import_run(req: ImportRequest, _=Depends(require_auth)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 class PasswordChangeRequest(BaseModel):
     current_password: str
     new_password: str
     username: Optional[str] = None
+
 
 @app.post("/api/auth/change-password")
 async def change_password(req: PasswordChangeRequest, request: Request, _=Depends(require_auth)):
     """Change the web UI password."""
     # Verify current password first
     stored = _settings.get("web", {})
-    username = stored.get("username", "admin")
     stored_hash = stored.get("password_hash", "")
     # Re-use existing check logic
     if not _verify_password(req.current_password, stored_hash):
@@ -509,6 +589,7 @@ async def change_password(req: PasswordChangeRequest, request: Request, _=Depend
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Saved in memory but failed to write config: {e}")
     return {"ok": True, "message": "Password updated successfully"}
+
 
 @app.get("/api/settings")
 async def get_settings(_=Depends(require_auth)):
@@ -546,12 +627,14 @@ async def get_settings(_=Depends(require_auth)):
         "pinned_containers": len(containers_cfg),
     }
 
+
 class SettingsUpdateRequest(BaseModel):
     snapshot_retention: Optional[int] = None
     log_retention_days: Optional[int] = None
     auto_prune: Optional[bool] = None
     recreate_delay: Optional[int] = None
     daemon_schedule: Optional[str] = None
+
 
 @app.post("/api/settings")
 async def update_settings(req: SettingsUpdateRequest, _=Depends(require_auth)):
@@ -579,6 +662,7 @@ async def update_settings(req: SettingsUpdateRequest, _=Depends(require_auth)):
         raise HTTPException(status_code=500, detail=f"Settings updated in memory but failed to save: {e}")
     return {"ok": True}
 
+
 @app.get("/api/dam/version")
 async def dam_version_check(_=Depends(require_auth)):
     from dam.web.dam_updater import check_latest_version
@@ -586,6 +670,7 @@ async def dam_version_check(_=Depends(require_auth)):
     return {"current": info.current, "latest": info.latest,
             "update_available": info.update_available,
             "release_url": info.release_url, "release_notes": info.release_notes, "error": info.error}
+
 
 @app.post("/api/dam/update")
 async def dam_self_update(_=Depends(require_auth)):
@@ -596,16 +681,23 @@ async def dam_self_update(_=Depends(require_auth)):
 
 _static_dir = Path(__file__).parent / "static"
 
+
 @app.get("/", response_class=HTMLResponse)
 async def serve_ui():
     index = _static_dir / "index.html"
-    if index.exists(): return HTMLResponse(content=index.read_text())
+    if index.exists():
+        return HTMLResponse(content=index.read_text())
     return HTMLResponse("<h1>DAM Web UI</h1>", status_code=404)
 
+
 def create_app(config_path=None):
-    global _config_path; _config_path = config_path; return app
+    global _config_path
+    _config_path = config_path
+    return app
+
 
 def run_server(host="127.0.0.1", port=8080, config_path=None):
     import uvicorn
-    global _config_path; _config_path = config_path
+    global _config_path
+    _config_path = config_path
     uvicorn.run(app, host=host, port=port, log_level="warning")
