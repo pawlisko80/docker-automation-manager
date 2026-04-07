@@ -97,14 +97,36 @@ def _cfg_to_dict(cfg: ContainerConfig) -> dict:
         "overseerr": "5055", "transmission": "9091", "deluge": "8112",
         "nzbget": "6789", "sabnzbd": "8080",
         "uptime-kuma": "3001", "vaultwarden": "80", "gitea": "3000",
+        "peanut": "8080", "nut-upsd": "8080", "nut_upsd": "8080",
     }
+    # Check well-known port env vars before anything else
+    _PORT_ENV_KEYS = ["WEB_PORT", "HTTP_PORT", "PORT", "APP_PORT", "SERVER_PORT",
+                      "WEBUI_PORT", "UI_PORT", "DASHBOARD_PORT"]
+    env_port = None
+    for key in _PORT_ENV_KEYS:
+        val = (cfg.env or {}).get(key, "").strip()
+        if val and val.isdigit():
+            env_port = val
+            break
+
     exposed_ports = []
     if not cfg.ports and not label_ports:
-        _SKIP = {"6881", "1900", "5353"}
+        _SKIP = {"6881", "6882", "1900", "5353", "51820"}
+        _UI_PORTS = {"80","443","3000","3001","4000","5000","6052","8000","8008",
+                     "8080","8081","8096","8123","8443","8888","9000","9090","9091","9443"}
+        _raw = []
         for ep in (cfg.exposed_ports or []):
             port_num = ep.split("/")[0]
             if port_num and port_num not in _SKIP:
-                exposed_ports.append(port_num)
+                _raw.append(port_num)
+        # env var port wins, then UI ports first
+        if env_port:
+            exposed_ports.append(env_port)
+        seen = {env_port} if env_port else set()
+        for p in sorted(_raw, key=lambda x: (0 if x in _UI_PORTS else 1, int(x) if x.isdigit() else 0)):
+            if p not in seen:
+                seen.add(p)
+                exposed_ports.append(p)
         if not exposed_ports:
             image_lower = cfg.image.lower().split(":")[0].split("/")[-1]
             for key, port in _WELL_KNOWN.items():
