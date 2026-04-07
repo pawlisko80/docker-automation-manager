@@ -191,7 +191,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
                     </a>
                   </template>
                   <template x-for="ep in c.extra_ports" :key="ep">
-                    <a :href="'http://localhost:'+ep" target="_blank" class="plink" x-text="ep"></a>
+                    <a :href="c.ip ? 'http://'+c.ip+':'+ep : 'http://localhost:'+ep" target="_blank" class="plink" x-text="ep"></a>
                   </template>
                 </td>
                 <td>

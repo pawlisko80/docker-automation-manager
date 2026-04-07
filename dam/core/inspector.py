@@ -85,6 +85,9 @@ class ContainerConfig:
     extra_hosts: list[str]             # --add-host entries
     labels: dict[str, str]             # container labels (DAM uses these for metadata)
 
+    # Exposed ports from image config (not necessarily published to host)
+    exposed_ports: list[str] = None    # e.g. ["8123/tcp", "80/tcp"]
+
     # DAM metadata (not from Docker — populated by inspector)
     version_strategy: str = "latest"   # latest / stable / pinned
     pinned_digest: Optional[str] = None
@@ -288,6 +291,7 @@ class Inspector:
                 k: v for k, v in (cc.get("Labels") or {}).items()
                 if not k.startswith("org.opencontainers")  # skip OCI standard labels
             },
+            exposed_ports=list(cc.get("ExposedPorts") or {}).copy(),
             version_strategy=version_strategy,
             pinned_digest=pinned_digest,
         )

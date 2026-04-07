@@ -77,18 +77,30 @@ def _cfg_to_dict(cfg: ContainerConfig) -> dict:
         hp = p.host_port
         https = hp in ("443","8443","9443") or p.container_port.startswith("443")
         scheme = "https" if https else "http"
+        ip = cfg.primary_ip() or "localhost"
         ports.append({"container": p.container_port, "host": hp, "host_ip": p.host_ip,
-                      "link": f"{scheme}://localhost:{hp}" if hp else None, "https": https})
+                      "link": f"{scheme}://{ip}:{hp}" if hp else None, "https": https})
     labels = cfg.labels or {}
     tags = [t.strip() for t in labels.get("dockpeek.tags","").split(",") if t.strip()]
     tags += [t.strip() for t in labels.get("dam.tags","").split(",") if t.strip()]
+
+    # Extra ports: label-defined first, then fall back to ExposedPorts for macvlan containers
+    label_ports = [p.strip() for p in (labels.get("dockpeek.ports") or labels.get("dam.ports","")).split(",") if p.strip()]
+    exposed_ports = []
+    if not cfg.ports and not label_ports and cfg.primary_ip():
+        # macvlan/static-IP container with no published ports — show ExposedPorts from image config
+        for ep in (cfg.exposed_ports or []):
+            port_num = ep.split("/")[0]
+            if port_num:
+                exposed_ports.append(port_num)
+
     return {"name": cfg.name, "image": cfg.image, "image_id": cfg.image_id[:19] if cfg.image_id else "",
             "status": cfg.status, "restart_policy": cfg.restart_policy, "network_mode": cfg.network_mode,
             "ip": cfg.primary_ip(), "network": cfg.primary_network(), "binds": cfg.binds,
             "env": cfg.env, "privileged": cfg.privileged, "version_strategy": cfg.version_strategy,
             "ports": ports, "tags": tags,
             "custom_link": labels.get("dockpeek.link") or labels.get("dam.link"),
-            "extra_ports": [p.strip() for p in (labels.get("dockpeek.ports") or labels.get("dam.ports","")).split(",") if p.strip()],
+            "extra_ports": label_ports or exposed_ports,
             "labels": labels}
 
 class LoginRequest(BaseModel):
