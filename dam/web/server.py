@@ -284,6 +284,16 @@ async def get_snapshots(_=Depends(require_auth)):
     return {"snapshots": [{"id": i, "filename": p.name, "size_kb": round(p.stat().st_size/1024, 1)}
         for i, p in enumerate(_snapshot_manager.list_snapshots())]}
 
+@app.post("/api/snapshots")
+async def take_snapshot(_=Depends(require_auth)):
+    try:
+        inspector = Inspector(_platform)
+        configs = inspector.inspect_all(settings_containers=_settings.get("containers", {}) or {})
+        path = _snapshot_manager.save(configs, _platform, label="web-manual")
+        return {"ok": True, "filename": path.name}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/snapshots/{snapshot_id}")
 async def get_snapshot(snapshot_id: int, _=Depends(require_auth)):
     snaps = _snapshot_manager.list_snapshots()

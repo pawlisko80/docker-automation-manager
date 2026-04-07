@@ -446,10 +446,12 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
     <div x-show="pg==='snaps'">
       <div class="flex gap mb16" style="align-items:center">
         <div class="page-title">Snapshots</div>
-        <button class="btn btn-s btn-sm mla" @click="loadSnaps()"><i class="fa fa-refresh"></i> Refresh</button>
+        <button class="btn btn-s btn-sm mla" @click="takeSnap()" :disabled="ld.snap"><i class="fa fa-camera"></i> Take Snapshot</button>
+        <button class="btn btn-s btn-sm" @click="loadSnaps()"><i class="fa fa-refresh"></i> Refresh</button>
       </div>
+      <div class="alert as" x-show="snapMsg" x-text="snapMsg" style="margin-bottom:12px"></div>
       <div class="card" x-show="ld.snaps"><div class="spin"></div> Loading...</div>
-      <div class="alert ai" x-show="!ld.snaps&&snaps.length===0">No snapshots yet. Run an update to create a baseline.</div>
+      <div class="alert ai" x-show="!ld.snaps&&snaps.length===0">No snapshots yet. Click "Take Snapshot" to create a baseline.</div>
       <div class="card" style="padding:0;overflow:hidden" x-show="!ld.snaps&&snaps.length>0">
         <table>
           <thead><tr><th>#</th><th>Filename</th><th>Size</th><th></th></tr></thead>
@@ -532,7 +534,7 @@ auth:false,lf:{u:'',p:''},le:'',ll:false,
 pg:'dash',ver:'',plat:'',dark:true,q:'',ar:false,_art:null,
 cs:[],ld:{},
 eolR:[],eolS:{},eolW:0,
-drift:{},snaps:[],snapD:null,
+drift:{},snaps:[],snapD:null,snapMsg:'',
 us:1,sel:[],drr:[],drs:{},ulog:[],usum:{},sid:null,
 pc:null,pr:null,
 expSel:[],expFmt:'dam-yaml',
@@ -610,6 +612,15 @@ async loadDrift(){
   this.ld.drift=true;
   try{const d=await this.api('/api/drift');if(d)this.drift=d;}
   catch(e){}finally{this.ld.drift=false;}
+},
+async takeSnap(){
+  this.ld.snap=true;this.snapMsg='';
+  try{
+    const d=await this.api('/api/snapshots',{method:'POST'});
+    this.snapMsg=d.ok?'\u2713 Snapshot saved: '+d.filename:'Failed to save snapshot';
+    await this.loadSnaps();
+  }catch(e){this.snapMsg='Error: '+e.message;}
+  finally{this.ld.snap=false;setTimeout(()=>this.snapMsg='',4000);}
 },
 async loadSnaps(){
   this.ld.snaps=true;
