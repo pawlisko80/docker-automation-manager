@@ -704,7 +704,9 @@ class DAMTui:
         console.print("  [cyan][2][/cyan] Last snapshot vs previous snapshot")
         console.print()
 
-        mode = Prompt.ask("Select", choices=["1", "2"], default="1")
+        mode = Prompt.ask("Select [q to cancel]", choices=["1", "2", "q"], default="1")
+        if mode == "q":
+            return
         console.print()
 
         with console.status("[cyan]Running drift analysis...[/cyan]"):
@@ -911,9 +913,12 @@ class DAMTui:
 
         console.print()
         selection = Prompt.ask(
-            "Select containers [all / comma-separated numbers e.g. 1,3]",
+            "Select containers [all / comma-separated numbers e.g. 1,3 / q to cancel]",
             default="all"
         )
+
+        if selection.strip().lower() in ("q", "quit", "exit", ""):
+            return
 
         sorted_configs = sorted(configs, key=lambda c: c.name)
         if selection.strip().lower() == "all":
@@ -939,9 +944,12 @@ class DAMTui:
         console.print("  [cyan][2][/cyan] docker-run  — Executable shell script (works anywhere without DAM)")
         console.print("  [cyan][3][/cyan] compose     — docker-compose.yml")
         console.print("  [cyan][4][/cyan] All formats")
+        console.print("  [cyan][q][/cyan] Cancel")
         console.print()
 
-        fmt_choice = Prompt.ask("Select format", choices=["1", "2", "3", "4"], default="1")
+        fmt_choice = Prompt.ask("Select format", choices=["1", "2", "3", "4", "q"], default="1")
+        if fmt_choice == "q":
+            return
         fmt_map = {"1": "dam-yaml", "2": "docker-run", "3": "compose"}
 
         # --- Output directory ---
@@ -984,7 +992,9 @@ class DAMTui:
     def _action_import(self) -> None:
         console.print(Rule("[bold cyan]Import Containers[/bold cyan]"))
 
-        file_path_str = Prompt.ask("Path to DAM YAML export file")
+        file_path_str = Prompt.ask("Path to DAM YAML export file [or q to cancel]")
+        if file_path_str.strip().lower() in ("q", "quit", "exit"):
+            return
         file_path = Path(file_path_str).expanduser()
 
         if not file_path.exists():
