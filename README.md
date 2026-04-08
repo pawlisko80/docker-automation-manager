@@ -1,7 +1,7 @@
 # docker-automation-manager (DAM)
 
 Automated Docker container lifecycle manager for QNAP, Synology, and generic Linux hosts.
-Includes a Rich terminal TUI, headless CLI, and a full web UI.
+Includes a Rich terminal TUI, headless CLI, and a full web UI — no font dependencies, works on restricted networks.
 
 [![CI](https://github.com/pawlisko80/docker-automation-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/pawlisko80/docker-automation-manager/actions)
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue)](https://www.python.org)
@@ -13,18 +13,18 @@ Includes a Rich terminal TUI, headless CLI, and a full web UI.
 ## Features
 
 - 🔍 **Platform auto-detection** — QNAP, Synology, Generic Linux at runtime
-- 📸 **Snapshots** — full container config saved to YAML before every update
+- 📸 **Snapshots** — full container config saved to YAML before every update; UTC/local time toggle
 - 🔄 **Smart updates** — digest compare, only recreates containers that actually changed
 - 🌐 **Static IP preservation** — macvlan / qnet networks survive container recreation
-- 📊 **Drift detection** — 5-level severity diff between live state and last snapshot
-- 📦 **Export** — container configs as DAM YAML, shell script, or docker-compose
-- 📥 **Import** — recreate containers from a DAM YAML export on any host
+- 📊 **Drift detection** — 5-level severity diff between live state and last snapshot; Reset Baseline button
+- 📦 **Export** — DAM YAML, shell script, docker-compose, or full **Migration zip**
+- 📥 **Import** — recreate containers from DAM YAML or migration zip on any host
 - ⚠️  **EOL detection** — warns when images are deprecated, archived, or end-of-life
-- 🌐 **Web UI** — full dashboard with port links, log viewer, import, settings
+- 🌐 **Web UI** — full dashboard, zero font dependencies, works behind CDN-blocked networks
 - 🖥️  **Rich TUI** — color-coded tables, progress bars, 9-option interactive menu
-- ⚙️  **Daemon mode** — cron job or systemd unit for automated runs
+- ⚙️  **Scheduler** — configure cron/systemd from the web UI; Docker-aware install instructions
 - 🗑️  **Auto-prune** — removes unused images after successful updates
-- 📌 **Version pinning** — per-container: `latest`, `stable`, or pinned digest
+- 🚚 **Server migration** — export full migration bundle (containers + volumes) as a zip
 - 🔁 **Self-updater** — web UI can update DAM itself via git pull or zip download
 - 🧪 **281 tests** — fully mocked, no live Docker daemon required
 
@@ -61,65 +61,26 @@ dam --update                  # pull + recreate changed containers
 dam --update --dry-run        # preview only
 dam --drift                   # compare live vs last snapshot
 dam --export --format dam-yaml
+dam --migrate                 # export full migration bundle
 dam --eol-check               # exits 3 if deprecated images found
 ```
 
 ---
 
-## Web UI (v0.6.0)
-
-### Dashboard
-
-| Column | Source |
-|--------|--------|
-| Container name | Clickable → service web UI (auto-resolved IP + port) |
-| Image | Full image reference |
-| Status | running / exited / paused |
-| IP / Network | Static IP for macvlan containers, network name |
-| Ports | Published ports (clickable) + auto-detected service ports |
-| Tags | `dam.tags` / `dockpeek.tags` container labels |
-| Actions | Logs · Start · Stop · Restart |
-
-### Port auto-detection (for macvlan/host containers without published ports)
-
-DAM resolves service ports in priority order:
-
-1. `dam.ports` or `dockpeek.ports` label on the container
-2. Environment variable — `WEB_PORT`, `HTTP_PORT`, `PORT`, `APP_PORT`, etc.
-3. `ExposedPorts` from the Docker image config
-4. Well-known image name map (homeassistant → 8123, grafana → 3000, etc.)
-
-### Container labels
-
-```bash
-# Custom link (overrides auto-link)
---label dam.link=https://myapp.local
-
-# Port hint (when auto-detection isn't enough)
---label dam.ports=8080
-
-# Tag pills shown in dashboard
---label dam.tags=media,arr
-
-# All dockpeek.* labels also supported
---label dockpeek.link=http://10.0.0.5:8096
---label dockpeek.tags=media
---label dockpeek.ports=8096
-```
-
-### Pages
+## Web UI Pages
 
 | Page | Description |
 |------|-------------|
-| Dashboard | Container table, search/filter, start/stop/restart, log viewer |
-| Update | Select containers → dry run → live update with SSE progress |
-| Drift | Compare live state vs last snapshot |
+| Dashboard | Container table, status, IPs, ports, start/stop/restart/logs per container |
+| Update | Select containers → dry run → apply updates with live SSE progress |
+| Drift | Compare live state vs last snapshot; Reset Baseline button |
 | EOL Check | Deprecated/archived image warnings |
 | Prune | Preview + remove unused images |
-| Export | Select containers + format → download file (DAM YAML / Shell Script / Compose / **Migration zip**) |
-| Snapshots | List snapshots, view detail, **take snapshot** |
-| Import | Paste DAM YAML → preview → dry run → live import |
-| Settings | Platform info, Docker info, DAM config, change password |
+| Export | DAM YAML / Shell Script / Compose / **Migration zip** |
+| Snapshots | List snapshots, view detail, take snapshot; UTC/local time toggle |
+| Import | Paste YAML or upload `.yaml` / `.zip` migration bundle |
+| Scheduler | Configure schedule, install cron/systemd daemon, Run Now |
+| Settings | Platform info, Docker info, DAM config, change username/password |
 
 ---
 
@@ -138,7 +99,7 @@ docker run -d --name dam-web \
   && dam --web --host 0.0.0.0 --port 8090"
 ```
 
-**First-time password setup** (run once after container starts):
+**First-time password setup:**
 
 ```bash
 docker exec -it dam-web dam --web-passwd
@@ -147,29 +108,71 @@ docker exec -it dam-web dam --web-passwd
 **Updating DAM on QNAP:**
 
 ```bash
-cd /share/Container
-wget -q -O dam.zip https://github.com/pawlisko80/docker-automation-manager/archive/refs/tags/v0.6.0.zip
-cp docker-automation-manager/config/settings.yaml /tmp/settings.yaml.bak
-unzip -o dam.zip
-cp -r docker-automation-manager-0.6.0/. docker-automation-manager/
-cp /tmp/settings.yaml.bak docker-automation-manager/config/settings.yaml
-rm -rf docker-automation-manager-0.6.0 dam.zip
+cd /share/Container/docker-automation-manager
+for f in dam/__init__.py dam/web/server.py dam/web/static/index.html; do
+  wget -q -O $f https://raw.githubusercontent.com/pawlisko80/docker-automation-manager/main/$f
+done
 docker restart dam-web
 ```
 
-### Static files for restricted networks
+### Scheduler on QNAP (Docker-hosted)
 
-If your QNAP blocks CDN access, serve Alpine.js and Font Awesome locally:
+Because DAM runs inside Docker, it cannot write to the host crontab directly.
+Click **Install Daemon** on the Scheduler page — DAM will detect this and show you the exact cron line to add:
 
 ```bash
-# Download once
-wget -q -O /share/Container/docker-automation-manager/dam/web/static/alpine.min.js \
-  https://cdnjs.cloudflare.com/ajax/libs/alpinejs/3.13.5/cdn.min.js
-wget -q -O /share/Container/docker-automation-manager/dam/web/static/fa.min.css \
-  "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
+# Add to /etc/config/crontab on your QNAP host:
+0 2 * * * docker exec dam-web dam --update --yes # DAM auto-update
+
+# Then reload:
+crontab /etc/config/crontab
 ```
 
-DAM's web server automatically serves these from `/static/` if present.
+Alternatively use QNAP **Control Panel → Task Scheduler**.
+
+### Font Awesome / Static Assets (restricted networks)
+
+QNAP may block CDN access. The web UI has zero font dependencies — all icons are unicode text.
+If you want Font Awesome icons, download assets locally:
+
+```bash
+bash scripts/fetch-static.sh
+```
+
+---
+
+## Server Migration
+
+Move all containers and their data to a new server in 3 steps.
+
+**Step 1 — Export migration bundle:**
+
+```bash
+# Web UI: Export → select containers → Migration → Download
+# Or CLI:
+dam --migrate
+```
+
+Downloads `dam-migration.zip` containing `migrate.sh`, `dam-migrate-config.yaml`, `README.txt`.
+
+**Step 2 — Archive volumes on source server:**
+
+```bash
+unzip dam-migration.zip
+bash migrate.sh source
+# Stops containers, archives bind-mount volumes to volumes.tar.xz (XZ max compression)
+# Restarts containers when done
+```
+
+**Step 3 — Restore on target server:**
+
+```bash
+# Copy migrate.sh + volumes.tar.xz + dam-migrate-config.yaml to target
+bash migrate.sh restore
+# Extracts volumes, recreates all containers
+```
+
+**Optional:** Import `dam-migrate-config.yaml` (or the full zip) via the DAM web UI Import page to verify config.
 
 ---
 
@@ -183,13 +186,13 @@ web:
   password_hash: sha256:SALT:HASH   # set via dam --web-passwd or Settings page
 
 dam:
-  snapshot_retention: 10     # keep last N snapshots
+  snapshot_retention: 10
   log_retention_days: 30
-  auto_prune: true           # prune unused images after update
-  recreate_delay: 5          # seconds between stop and start on recreate
+  auto_prune: true
+  recreate_delay: 5
 
 daemon:
-  schedule: "0 2 1 * *"     # cron schedule for automated runs
+  schedule: "0 2 * * *"
 
 containers:
   my-container:
@@ -203,13 +206,13 @@ containers:
 
 **From CLI:**
 ```bash
-dam --web-passwd              # interactive prompt, writes sha256:salt:hash
+dam --web-passwd              # interactive prompt
 ```
 
-**From web UI:**  
-Settings → Change Password section
+**From web UI:**
+Settings → Change Username & Password — enter current password to change username, password, or both.
 
-**Manual reset** (if locked out):
+**Emergency reset (if locked out):**
 ```bash
 docker exec dam-web python3 -c "
 import hashlib, secrets
@@ -225,39 +228,31 @@ docker restart dam-web
 
 ---
 
+## Container Labels
+
+```bash
+--label dam.link=https://myapp.local    # custom link for container name
+--label dam.ports=8080                  # port hint for auto-detection
+--label dam.tags=media,arr              # tag pills shown in dashboard
+# dockpeek.* labels also supported
+```
+
+---
+
 ## Architecture
 
 ```
 dam/
-├── cli.py              Click CLI entry point
-├── main.py             Package entry point
+├── cli.py              Click CLI (--status, --update, --drift, --export, --migrate, --web, ...)
 ├── tui.py              Rich TUI (9-option interactive menu)
-├── core/
-│   ├── inspector.py    Docker SDK container inspection → ContainerConfig
-│   ├── snapshot.py     YAML snapshot save/load/list
-│   ├── updater.py      Digest-compare update + static IP preservation
-│   ├── pruner.py       Unused image removal
-│   ├── drift.py        5-level severity diff engine
-│   ├── exporter.py     Export to DAM YAML / shell script / compose
-│   ├── importer.py     Recreate containers from DAM YAML
-│   └── deprecation.py  EOL/deprecation checker + bundled eol.yaml
-├── platform/
-│   ├── detector.py     Auto-detect QNAP / Synology / Generic
-│   ├── qnap.py         QNAP-specific: qnet static IP networks
-│   ├── synology.py     Synology-specific paths
-│   └── generic.py      Generic Linux
-├── daemon/
-│   ├── scheduler.py    Cron job installer
-│   └── service.py      Systemd unit installer
+├── core/               inspector, snapshot, updater, pruner, drift, exporter, importer, deprecation
+├── platform/           detector, qnap, synology, generic
+├── daemon/             scheduler (cron parser), service (install/remove/run)
 └── web/
-    ├── server.py       FastAPI app + all endpoints
-    ├── auth.py         Password hashing (legacy)
+    ├── server.py       FastAPI app + all API endpoints
     ├── dam_updater.py  Self-update (git pull → zip fallback)
-    ├── write_html.py   Generates static/index.html
     └── static/
-        ├── index.html  Alpine.js SPA (single file, ~750 lines)
-        ├── alpine.min.js  (optional local copy)
-        └── fa.min.css     (optional local copy)
+        └── index.html  Alpine.js SPA (~900 lines, zero font dependencies)
 ```
 
 ---
@@ -266,61 +261,9 @@ dam/
 
 ```bash
 pip install -e ".[dev]"
-
-# Run tests (no Docker daemon required)
-pytest tests/ -v
-
-# Lint
+pytest tests/ -v              # 281 tests, no live Docker required
 flake8 dam/ --max-line-length=120
-
-# Regenerate index.html from write_html.py template
-python dam/web/write_html.py
 ```
-
----
-
-## Server Migration
-
-DAM can export a complete migration bundle to move containers between servers:
-
-```bash
-# In web UI: Export → select containers → Migration → Download
-# This downloads dam-migration.zip containing:
-#   migrate.sh              — two-phase migration script
-#   dam-migrate-config.yaml — DAM YAML for re-import
-#   README.txt              — step-by-step instructions
-```
-
-**On source server:**
-```bash
-unzip dam-migration.zip
-bash migrate.sh source
-# Stops containers, archives all bind-mount volumes to volumes.tar.xz
-# using maximum XZ compression (XZ_OPT=-9e), then restarts containers
-```
-
-**Transfer files to target server:**
-```
-migrate.sh
-volumes.tar.xz
-dam-migrate-config.yaml
-```
-
-**On target server:**
-```bash
-bash migrate.sh restore
-# Extracts volumes to original paths, recreates all containers
-```
-
-**Optional:** import `dam-migrate-config.yaml` via the DAM web UI Import page to verify config.
-
----
-
-## Known Limitations
-
-- Export downloads work via browser — direct file download from web UI (file-picker upload for import coming)
-- Font Awesome icons require `fa.min.css` to be present locally on CDN-restricted networks
-- Self-update requires either a `.git` directory or network access to GitHub
 
 ---
 
