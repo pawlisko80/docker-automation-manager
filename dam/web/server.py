@@ -931,20 +931,53 @@ class DaemonInstallRequest(BaseModel):
     schedule: Optional[str] = None
 
 
+def _is_in_container() -> bool:
+    """Detect if running inside a Docker container."""
+    return Path("/.dockerenv").exists() or (
+        Path("/proc/1/cgroup").exists()
+        and "docker" in Path("/proc/1/cgroup").read_text()
+    )
+
+
 @app.post("/api/daemon/install")
 async def daemon_install(req: DaemonInstallRequest, _=Depends(require_auth)):
     """Install DAM daemon (cron or systemd)."""
+    from dam.daemon.service import DaemonManager as DaemonService
+    schedule = req.schedule or _settings.get("daemon", {}).get("schedule", "0 2 * * *")
+
+    # Save schedule to settings regardless
+    if "daemon" not in _settings:
+        _settings["daemon"] = {}
+    _settings["daemon"]["schedule"] = schedule
+    cfg_path = Path(_settings.get("_config_path", "/app/config/settings.yaml"))
+    save_settings = {k: v for k, v in _settings.items() if not k.startswith("_")}
+    cfg_path.parent.mkdir(parents=True, exist_ok=True)
+    cfg_path.write_text(yaml.dump(save_settings, default_flow_style=False))
+
+    # When running inside Docker, we cannot write to the host crontab.
+    # Return the cron line the user needs to add manually on the host.
+    if _is_in_container():
+        cron_line = (
+            f"{schedule} docker exec dam-web dam --update --yes "
+            f"# DAM auto-update"
+        )
+        qnap_instructions = (
+            "DAM is running inside Docker and cannot modify the host crontab directly. "
+            f"Add this line to your QNAP crontab (/etc/config/crontab):\n\n"
+            f"  {cron_line}\n\n"
+            "Then run: crontab /etc/config/crontab\n\n"
+            "Alternatively, use QNAP Task Scheduler (Control Panel → Task Scheduler) "
+            "to run this command on your chosen schedule."
+        )
+        return {
+            "success": False,
+            "in_container": True,
+            "schedule": schedule,
+            "cron_line": cron_line,
+            "message": qnap_instructions,
+        }
+
     try:
-        from dam.daemon.service import DaemonManager as DaemonService
-        schedule = req.schedule or _settings.get("daemon", {}).get("schedule", "0 2 * * *")
-        # Save schedule to settings
-        if "daemon" not in _settings:
-            _settings["daemon"] = {}
-        _settings["daemon"]["schedule"] = schedule
-        cfg_path = Path(_settings.get("_config_path", "/app/config/settings.yaml"))
-        save_settings = {k: v for k, v in _settings.items() if not k.startswith("_")}
-        cfg_path.parent.mkdir(parents=True, exist_ok=True)
-        cfg_path.write_text(yaml.dump(save_settings, default_flow_style=False))
         svc = DaemonService(_platform, schedule=schedule)
         result = svc.install()
         return result

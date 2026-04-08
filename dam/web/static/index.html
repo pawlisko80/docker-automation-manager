@@ -656,6 +656,15 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
           </div>
           <div class="alert ad" x-show="dmn.err" x-text="dmn.err" style="margin-top:8px"></div>
           <div class="alert as" x-show="dmn.ok" x-text="dmn.ok" style="margin-top:8px"></div>
+          <div x-show="dmn.cronLine" style="margin-top:8px">
+            <div class="alert aw" style="font-size:12px;line-height:1.6">
+              ⚠ DAM is running inside Docker and cannot write to the host crontab directly.<br>
+              Add this line to <strong>/etc/config/crontab</strong> on your QNAP host,
+              then run <code>crontab /etc/config/crontab</code>:<br>
+              <div style="margin-top:6px;background:var(--bg3);padding:6px 10px;border-radius:4px;font-family:monospace;font-size:11px;word-break:break-all" x-text="dmn.cronLine"></div>
+              <div style="margin-top:6px">Or use <strong>QNAP Task Scheduler</strong> (Control Panel → Task Scheduler) to run the command above on your chosen schedule.</div>
+            </div>
+          </div>
           <div class="flex gap" style="margin-top:12px;flex-wrap:wrap;gap:8px;align-items:center">
             <button class="btn" @click="daemonInstall()" :disabled="ld.daemonact===true">
               <span x-text="dmn.installed ? 'Update Schedule' : 'Install Daemon'">Install Daemon</span>
@@ -1097,18 +1106,27 @@ async loadDaemon(){
   try{
     const d=await this.api('/api/daemon');
     if(d){
-      this.dmn=Object.assign({err:'',ok:'',runResult:null,edit_schedule:d.schedule||'0 2 * * *'},d);
+      this.dmn=Object.assign({err:'',ok:'',runResult:null,cronLine:'',containerMsg:'',edit_schedule:d.schedule||'0 2 * * *'},d);
     }
   }catch(e){
-    this.dmn={installed:false,err:e.message,ok:'',runResult:null,edit_schedule:'0 2 * * *',schedule:'0 2 * * *'};
+    this.dmn={installed:false,err:e.message,ok:'',runResult:null,cronLine:'',containerMsg:'',edit_schedule:'0 2 * * *',schedule:'0 2 * * *'};
   }finally{this.ld.daemon=false;}
 },
 async daemonInstall(){
-  this.ld.daemonact=true;this.dmn.err='';this.dmn.ok='';
+  this.ld.daemonact=true;this.dmn.err='';this.dmn.ok='';this.dmn.cronLine='';
   try{
     const d=await this.api('/api/daemon/install',{method:'POST',body:JSON.stringify({schedule:this.dmn.edit_schedule})});
-    if(d&&d.success){this.dmn.ok='\u2713 '+d.message;await this.loadDaemon();}
-    else{this.dmn.err=(d&&d.message)||'Install failed';}
+    if(d&&d.in_container){
+      this.dmn.cronLine=d.cron_line||'';
+      this.dmn.err='';
+      this.dmn.containerMsg=d.message||'';
+    }else if(d&&d.success){
+      this.dmn.ok='\u2713 '+d.message;
+      this.dmn.containerMsg='';
+      await this.loadDaemon();
+    }else{
+      this.dmn.err=(d&&d.message)||'Install failed';
+    }
   }catch(e){this.dmn.err=e.message;}
   finally{this.ld.daemonact=false;}
 },
