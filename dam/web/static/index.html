@@ -665,6 +665,9 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
               <div style="margin-top:6px">Or use <strong>QNAP Task Scheduler</strong> (Control Panel → Task Scheduler) to run the command above on your chosen schedule.</div>
             </div>
           </div>
+          <div class="alert ai" x-show="ld.daemonrun" style="margin-top:8px;font-size:12px">
+            ⏳ Update in progress — pulling images and recreating changed containers. This may take a few minutes...
+          </div>
           <div class="flex gap" style="margin-top:12px;flex-wrap:wrap;gap:8px;align-items:center">
             <button class="btn" @click="daemonInstall()" :disabled="ld.daemonact===true">
               <span x-text="dmn.installed ? 'Update Schedule' : 'Install Daemon'">Install Daemon</span>
@@ -676,7 +679,8 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
             <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
               <span class="dim" style="font-size:12px">Trigger an update right now:</span>
               <button class="btn" @click="daemonRunNow()" :disabled="ld.daemonrun===true">
-                <span x-text="ld.daemonrun ? 'Running...' : 'Run Now'">Run Now</span>
+                <span x-show="ld.daemonrun" class="spin" style="width:12px;height:12px;margin-right:6px;display:inline-block"></span>
+                <span x-text="ld.daemonrun ? 'Running update...' : 'Run Now'">Run Now</span>
               </button>
             </div>
           </div>

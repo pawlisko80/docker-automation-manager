@@ -1021,7 +1021,7 @@ async def daemon_run_now(_=Depends(require_auth)):
         if dam_cfg.get("auto_prune", True):
             Pruner().prune()
         return {"ok": True, "updated": updated, "failed": failed,
-                "results": [{"name": r.name, "status": r.status.value, "error": r.error} for r in results]}
+                "results": [{"name": r.container_name, "status": r.status.value, "error": r.error} for r in results]}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
