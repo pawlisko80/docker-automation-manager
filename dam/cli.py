@@ -69,6 +69,7 @@ def _load_context(config: Optional[str]):
 @click.option("--all", "-a", is_flag=True, help="(--prune) Remove all unreferenced images")
 @click.option("--container", default=None, help="Target a single container by name")
 @click.option("--export", is_flag=True, help="Export container configs")
+@click.option("--migrate", is_flag=True, help="Export migration bundle (migrate.sh + DAM YAML + README)")
 @click.option("--import-file", default=None, help="Import containers from a DAM YAML file")
 @click.option("--eol-check", is_flag=True, help="Check for deprecated or EOL images")
 @click.option("--format", "fmt", default="dam-yaml", help="Export format: dam-yaml | docker-run | compose")
@@ -82,7 +83,7 @@ def _load_context(config: Optional[str]):
 @click.pass_context
 def cli(ctx, config, status, update, drift, prune, dry_run, yes, all,
         container, install_daemon, export, import_file, eol_check,
-        fmt, output, web, host, port, web_passwd, version):
+        fmt, output, migrate, web, host, port, web_passwd, version):
     """Docker Automation Manager — container lifecycle management."""
 
     if version:
@@ -91,7 +92,9 @@ def cli(ctx, config, status, update, drift, prune, dry_run, yes, all,
         return
 
     # If any action flag is set, run headless
-    if web or web_passwd or status or update or drift or prune or install_daemon or export or import_file or eol_check:
+    any_action = web or web_passwd or status or update or drift or prune
+    any_action = any_action or install_daemon or export or import_file or eol_check or migrate
+    if any_action:
         ctx.ensure_object(dict)
         ctx.obj["config"] = config
         ctx.obj["dry_run"] = dry_run
@@ -103,6 +106,8 @@ def cli(ctx, config, status, update, drift, prune, dry_run, yes, all,
 
         if web_passwd:
             _cmd_set_web_passwd(config)
+        if migrate:
+            _cmd_migrate(config, output=output)
             return
         if web:
             _cmd_web(config, host=host, port=port)
@@ -517,6 +522,74 @@ def _cmd_export(
 
     except Exception as e:
         console.print(f"[bold red]Export failed:[/bold red] {e}")
+        sys.exit(1)
+
+
+def _cmd_migrate(config, output=None) -> None:
+    """Export a migration bundle: migrate.sh + dam-migrate-config.yaml + README in a zip."""
+    import zipfile
+    from dam.core.inspector import Inspector
+    from dam.core.exporter import Exporter
+    from dam.web.server import _generate_migration_script, _get_migration_binds
+    from pathlib import Path
+
+    platform, settings, _ = _load_context(config)
+    out_dir = Path(output).expanduser() if output else Path.cwd()
+
+    try:
+        inspector = Inspector(platform)
+        configs = inspector.inspect_all(
+            settings_containers=settings.get("containers", {}) or {}
+        )
+
+        # Generate migrate.sh
+        script = _generate_migration_script(configs)
+
+        # Generate dam-migrate-config.yaml
+        import tempfile
+        exporter = Exporter()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            paths = exporter.export(configs, "dam-yaml", Path(tmpdir), single_file=True)
+            yaml_content = paths[0].read_text() if paths else "# export failed"
+
+        readme = (
+            "DAM Migration Bundle\n"
+            "====================\n\n"
+            "Files:\n"
+            "  migrate.sh              Run on source then target server\n"
+            "  dam-migrate-config.yaml Import via DAM web UI Import page\n"
+            "  volumes.tar.xz          Created by: bash migrate.sh source\n\n"
+            "Steps:\n"
+            "  1. bash migrate.sh source  (on source server)\n"
+            "     Stops containers, archives volumes to volumes.tar.xz, restarts\n"
+            "  2. Copy migrate.sh + volumes.tar.xz + dam-migrate-config.yaml to target\n"
+            "  3. bash migrate.sh restore  (on target server)\n"
+            "     Extracts volumes, recreates all containers\n"
+        )
+
+        zip_path = out_dir / "dam-migration.zip"
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
+            zf.writestr("migrate.sh", script)
+            zf.writestr("dam-migrate-config.yaml", yaml_content)
+            zf.writestr("README.txt", readme)
+
+        console.print(f"[green]✓[/green] Migration bundle: {zip_path}")
+        console.print()
+
+        all_binds = _get_migration_binds(configs)
+        if all_binds:
+            console.print("[cyan]Volume paths that will be archived:[/cyan]")
+            for path, cname in all_binds.items():
+                console.print(f"  {cname}: [dim]{path}[/dim]")
+            console.print()
+
+        console.print("[bold]Next steps:[/bold]")
+        console.print("  1. [cyan]bash migrate.sh source[/cyan]  — archive volumes")
+        console.print("  2. Copy migrate.sh + volumes.tar.xz + dam-migrate-config.yaml to target")
+        console.print("  3. [cyan]bash migrate.sh restore[/cyan]  — restore on target")
+
+    except Exception as e:
+        console.print(f"[bold red]Migration export failed:[/bold red] {e}")
         sys.exit(1)
 
 

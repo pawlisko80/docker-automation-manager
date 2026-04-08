@@ -155,7 +155,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
           <label style="margin:0;color:var(--dim);font-size:12px">
             <input type="checkbox" x-model="ar" @change="togAR()"> Auto-refresh
           </label>
-          <button class="bti" @click="loadC()" title="Reload containers" style="padding:6px 12px;font-size:13px">↻ Reload</button>
+          <button class="bti" @click="loadC()" title="Reload containers" style="padding:6px 14px;font-size:13px;border-radius:6px">↻ Reload</button>
         </div>
       </div>
       <div class="stats" x-show="cs.length>0">
@@ -316,7 +316,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
       <div class="flex gap mb16" style="align-items:center">
         <div class="page-title">Drift Detection</div>
         <button class="btn btn-s btn-sm" @click="loadDrift()">↻ Refresh</button>
-        <button class="btn btn-s btn-sm" @click="driftResetBaseline()" :disabled="ld.snap" title="Take a new snapshot to use as the drift baseline" style="margin-left:4px">📷 Reset Baseline</button>
+        <button class="btn btn-s btn-sm" @click="driftResetBaseline()" :disabled="ld.driftReset" title="Take a new snapshot to use as the drift baseline" style="margin-left:4px">📷 Reset Baseline</button>
       </div>
       <div class="alert as" x-show="driftResetOk" x-text="driftResetOk" style="margin-bottom:8px"></div>
       <div class="card" x-show="ld.drift"><div class="spin"></div> Analyzing...</div>
@@ -448,9 +448,12 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
             <div style="font-weight:600">Migration</div><div class="dim" style="font-size:11px;margin-top:4px">Script + volume backup</div>
           </div>
         </div>
-        <div class="alert ai" x-show="expFmt==='migration'" style="margin-top:8px;font-size:12px">
-          🚚 Migration script backs up all bind-mount volumes via <code>tar</code> and recreates containers on the target server.
-          Run <code>bash dam-migrate.sh source</code> on this server, copy the <code>dam-migration/</code> folder, then run <code>bash dam-migrate.sh restore</code> on the target.
+        <div class="alert ai" x-show="expFmt==='migration'" style="margin-top:8px;font-size:13px;line-height:1.6">
+          🚚 <strong>Full server migration in 3 steps:</strong><br>
+          <strong>1.</strong> Download zip → contains <code>migrate.sh</code> + <code>dam-migrate-config.yaml</code><br>
+          <strong>2.</strong> On source server: <code>bash migrate.sh source</code> → creates <code>volumes.tar.xz</code> alongside the script<br>
+          <strong>3.</strong> Copy all 3 files to target → <code>bash migrate.sh restore</code> → volumes extracted + containers recreated<br>
+          <strong>Bonus:</strong> Import <code>dam-migrate-config.yaml</code> via the Import page (accepts .zip directly)
         </div>
       </div>
       <button class="btn btn-p" @click="doExp()" :disabled="ld.exp||expSel.length===0">
@@ -552,7 +555,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
         <div style="margin-bottom:8px">
           <label class="btn btn-s btn-sm" style="cursor:pointer;display:inline-block">
             📂 Choose File
-            <input type="file" accept=".yaml,.yml" style="display:none" @change="impLoadFile($event)">
+            <input type="file" accept=".yaml,.yml,.zip" style="display:none" @change="impLoadFile($event)">
           </label>
           <span class="dim" style="font-size:12px;margin-left:8px" x-text="imp.filename||'No file chosen'"></span>
         </div>
@@ -653,17 +656,15 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
           <div class="alert ad" x-show="dmn.err" x-text="dmn.err" style="margin-top:8px"></div>
           <div class="alert as" x-show="dmn.ok" x-text="dmn.ok" style="margin-top:8px"></div>
           <div class="flex gap" style="margin-top:12px;flex-wrap:wrap;gap:8px">
-            <button class="btn" @click="daemonInstall()" :disabled="ld.daemonact">
-              <span x-show="dmn.installed">↻ Reinstall / Update Schedule</span>
-              <span x-show="!dmn.installed">+ Install Daemon</span>
+            <button class="btn" @click="daemonInstall()" :disabled="ld.daemonact"
+              x-text="dmn.installed ? '↻ Reinstall / Update Schedule' : '+ Install Daemon'">
             </button>
             <button class="btn" style="background:var(--red);border-color:var(--red)"
               x-show="dmn.installed" @click="daemonRemove()" :disabled="ld.daemonact">
               ✕ Remove Daemon
             </button>
             <button class="btn btn-s" @click="daemonRunNow()" :disabled="ld.daemonrun" style="margin-left:auto">
-              <span x-show="ld.daemonrun">⟳ Running...</span>
-              <span x-show="!ld.daemonrun">▶ Run Now</span>
+              <span x-text="ld.daemonrun ? '⟳ Running...' : '▶ Run Now'"></span>
             </button>
           </div>
         </div>
@@ -859,13 +860,38 @@ async loadDrift(){
   try{const d=await this.api('/api/drift');if(d)this.drift=d;}
   catch(e){}finally{this.ld.drift=false;}
 },
-impLoadFile(e){
+async impLoadFile(e){
   const file=e.target.files[0];
   if(!file)return;
   this.imp.filename=file.name;
-  const r=new FileReader();
-  r.onload=ev=>{this.imp.yaml=ev.target.result;this.imp.preview=null;this.imp.results=null;};
-  r.readAsText(file);
+  this.imp.preview=null;this.imp.results=null;this.imp.err='';
+  if(file.name.endsWith('.zip')){
+    try{
+      // Load JSZip dynamically
+      if(!window.JSZip){
+        await new Promise((res,rej)=>{
+          const s=document.createElement('script');
+          s.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+          s.onload=res;s.onerror=rej;document.head.appendChild(s);
+        });
+      }
+      const buf=await file.arrayBuffer();
+      const zip=await JSZip.loadAsync(buf);
+      // Try dam-migrate-config.yaml first, then any .yaml file
+      let yamlFile=zip.file('dam-migrate-config.yaml');
+      if(!yamlFile){
+        const yamlFiles=Object.keys(zip.files).filter(n=>n.endsWith('.yaml')||n.endsWith('.yml'));
+        if(yamlFiles.length>0)yamlFile=zip.file(yamlFiles[0]);
+      }
+      if(!yamlFile){this.imp.err='No .yaml file found in zip';return;}
+      this.imp.yaml=await yamlFile.async('string');
+      this.imp.filename=file.name+' → '+yamlFile.name;
+    }catch(ex){this.imp.err='Failed to read zip: '+ex.message;}
+  }else{
+    const r=new FileReader();
+    r.onload=ev=>{this.imp.yaml=ev.target.result;};
+    r.readAsText(file);
+  }
 },
 async impPreview(){
   this.ld.imp=true;this.imp.err='';this.imp.preview=null;this.imp.results=null;
@@ -895,20 +921,23 @@ async changePwd(){
   finally{this.ld.pw=false;}
 },
 async driftResetBaseline(){
-  this.ld.snap=true;this.driftResetOk='';
+  this.ld.driftReset=true;this.driftResetOk='';
   try{
     const d=await this.api('/api/snapshots',{method:'POST'});
     if(d&&d.ok){this.driftResetOk='\u2713 Baseline reset — '+d.filename;await this.loadDrift();setTimeout(()=>this.driftResetOk='',5000);}
-  }catch(e){}finally{this.ld.snap=false;}
+    else{this.driftResetOk='\u2717 Failed: '+(d&&d.detail||'unknown');}
+  }catch(e){this.driftResetOk='\u2717 Error: '+e.message;}
+  finally{this.ld.driftReset=false;}
 },
 async takeSnap(){
   this.ld.snap=true;this.snapMsg='';this.snapErr=false;
   try{
-    const d=await this.api('/api/snapshots',{method:'POST'});
-    if(d&&d.ok){this.snapMsg='\u2713 Snapshot saved: '+d.filename;await this.loadSnaps();}
-    else{this.snapErr=true;this.snapMsg='Failed: '+(d&&d.detail||'unknown error');}
+    const r=await fetch('/api/snapshots',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'}});
+    const d=await r.json().catch(()=>null);
+    if(r.ok&&d&&d.ok){this.snapMsg='\u2713 Snapshot saved: '+d.filename;await this.loadSnaps();}
+    else{this.snapErr=true;this.snapMsg='Failed ('+r.status+'): '+(d&&(d.detail||d.message)||'unknown');}
   }catch(e){this.snapErr=true;this.snapMsg='Error: '+e.message;}
-  finally{this.ld.snap=false;setTimeout(()=>{this.snapMsg='';this.snapErr=false;},5000);}
+  finally{this.ld.snap=false;setTimeout(()=>{this.snapMsg='';this.snapErr=false;},8000);}
 },
 async loadSnaps(){
   this.ld.snaps=true;
