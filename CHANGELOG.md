@@ -11,6 +11,34 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.6.0] — 2026-04-07
+
+### Added
+
+- **Migration export** — new 🚚 Migration format on the Export page produces `dam-migration.zip` containing:
+  - `migrate.sh` — two-phase migration script:
+    - `bash migrate.sh source` — stops containers, archives all bind-mount volumes to `volumes.tar.xz` using maximum XZ compression (`XZ_OPT=-9e`), then restarts containers
+    - `bash migrate.sh restore` — extracts volumes to original paths, stops/removes old containers, recreates all containers with original config
+  - `dam-migrate-config.yaml` — full DAM YAML for re-import via web UI Import page
+  - `README.txt` — step-by-step instructions
+- **Drift Reset Baseline** button — takes a new snapshot directly from the Drift page to clear stale CLI drift
+
+### Fixed
+
+- ☀/☾ Dark/Light mode toggle now shows sun/moon unicode (was invisible FA icon)
+- All remaining Font Awesome icons replaced with unicode — zero font dependency anywhere
+- Reload button in dashboard styled consistently with action buttons
+- Scheduler Install/Remove/Run Now buttons now visible without FA
+- Export download button icon fixed
+- Migration script now uses `XZ_OPT="-9e --threads=0"` for best compression ratio
+
+### Changed
+
+- Migration export produces a zip bundle (2 files) instead of a single shell script
+- Version bumped to 0.6.0
+
+---
+
 ## [0.5.0] — 2026-04-07
 
 ### Added

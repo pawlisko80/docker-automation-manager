@@ -6,7 +6,7 @@ Includes a Rich terminal TUI, headless CLI, and a full web UI.
 [![CI](https://github.com/pawlisko80/docker-automation-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/pawlisko80/docker-automation-manager/actions)
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.4.0-green)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.6.0-green)](CHANGELOG.md)
 
 ---
 
@@ -66,7 +66,7 @@ dam --eol-check               # exits 3 if deprecated images found
 
 ---
 
-## Web UI (v0.4.0)
+## Web UI (v0.6.0)
 
 ### Dashboard
 
@@ -116,7 +116,7 @@ DAM resolves service ports in priority order:
 | Drift | Compare live state vs last snapshot |
 | EOL Check | Deprecated/archived image warnings |
 | Prune | Preview + remove unused images |
-| Export | Select containers + format → download file |
+| Export | Select containers + format → download file (DAM YAML / Shell Script / Compose / **Migration zip**) |
 | Snapshots | List snapshots, view detail, **take snapshot** |
 | Import | Paste DAM YAML → preview → dry run → live import |
 | Settings | Platform info, Docker info, DAM config, change password |
@@ -148,12 +148,12 @@ docker exec -it dam-web dam --web-passwd
 
 ```bash
 cd /share/Container
-wget -q -O dam.zip https://github.com/pawlisko80/docker-automation-manager/archive/refs/tags/v0.4.0.zip
+wget -q -O dam.zip https://github.com/pawlisko80/docker-automation-manager/archive/refs/tags/v0.6.0.zip
 cp docker-automation-manager/config/settings.yaml /tmp/settings.yaml.bak
 unzip -o dam.zip
-cp -r docker-automation-manager-0.4.0/. docker-automation-manager/
+cp -r docker-automation-manager-0.6.0/. docker-automation-manager/
 cp /tmp/settings.yaml.bak docker-automation-manager/config/settings.yaml
-rm -rf docker-automation-manager-0.4.0 dam.zip
+rm -rf docker-automation-manager-0.6.0 dam.zip
 docker restart dam-web
 ```
 
@@ -276,6 +276,43 @@ flake8 dam/ --max-line-length=120
 # Regenerate index.html from write_html.py template
 python dam/web/write_html.py
 ```
+
+---
+
+## Server Migration
+
+DAM can export a complete migration bundle to move containers between servers:
+
+```bash
+# In web UI: Export → select containers → Migration → Download
+# This downloads dam-migration.zip containing:
+#   migrate.sh              — two-phase migration script
+#   dam-migrate-config.yaml — DAM YAML for re-import
+#   README.txt              — step-by-step instructions
+```
+
+**On source server:**
+```bash
+unzip dam-migration.zip
+bash migrate.sh source
+# Stops containers, archives all bind-mount volumes to volumes.tar.xz
+# using maximum XZ compression (XZ_OPT=-9e), then restarts containers
+```
+
+**Transfer files to target server:**
+```
+migrate.sh
+volumes.tar.xz
+dam-migrate-config.yaml
+```
+
+**On target server:**
+```bash
+bash migrate.sh restore
+# Extracts volumes to original paths, recreates all containers
+```
+
+**Optional:** import `dam-migrate-config.yaml` via the DAM web UI Import page to verify config.
 
 ---
 
