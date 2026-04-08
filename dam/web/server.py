@@ -238,8 +238,8 @@ def _cfg_to_dict(cfg: ContainerConfig) -> dict:
     own_name = _settings.get("_own_container_name", "")
     own_host = _settings.get("_own_hostname", "")
     is_self = bool(
-        (own_name and cfg.name == own_name) or
-        (own_host and cfg.name and own_host.lower().startswith(cfg.name[:8].lower()))
+        (own_name and cfg.name == own_name)
+        or (own_host and cfg.name and own_host.lower().startswith(cfg.name[:8].lower()))
     )
     return {"name": cfg.name,
             "image": cfg.image,

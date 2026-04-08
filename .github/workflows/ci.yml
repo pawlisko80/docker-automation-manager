@@ -10,6 +10,8 @@ jobs:
   test:
     name: Tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     strategy:
       fail-fast: false
@@ -59,7 +61,6 @@ jobs:
           from dam.core.drift import DriftDetector
           from dam.daemon.scheduler import parse_cron, validate_cron
           from dam.daemon.service import DaemonManager, DaemonState
-          from dam.web.auth import hash_password, verify_password
           from dam.web.server import create_app
           from dam.core.exporter import Exporter
           from dam.core.importer import Importer
@@ -70,6 +71,8 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - uses: actions/checkout@v4
@@ -82,7 +85,4 @@ jobs:
         run: pip install flake8
 
       - name: Flake8
-        run: |
-          flake8 dam/ --max-line-length=120 \
-            --ignore=E501,W503,E241,E221,E231 \
-            --exclude=dam/__pycache__,dam/core/__pycache__,dam/platform/__pycache__,dam/daemon/__pycache__
+        run: flake8 dam/ --max-line-length=120
