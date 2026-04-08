@@ -30,7 +30,8 @@ app.add_middleware(
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"])
+    allow_headers=["*"],
+    expose_headers=["Content-Disposition", "X-Filename"])
 
 _platform = None
 _snapshot_manager = None
@@ -38,6 +39,34 @@ _settings = {}
 _config_path = None
 _sse_queues: dict[str, asyncio.Queue] = {}
 _sessions: dict[str, float] = {}
+_sessions_file: Optional[Path] = None
+
+
+def _load_sessions():
+    """Load sessions from disk on startup."""
+    global _sessions
+    if _sessions_file and _sessions_file.exists():
+        try:
+            import json
+            data = json.loads(_sessions_file.read_text())
+            now = time.time()
+            # Only keep non-expired sessions
+            _sessions = {k: v for k, v in data.items() if v > now}
+        except Exception:
+            _sessions = {}
+
+
+def _save_sessions():
+    """Persist sessions to disk."""
+    if _sessions_file:
+        try:
+            import json
+            _sessions_file.parent.mkdir(parents=True, exist_ok=True)
+            _sessions_file.write_text(json.dumps(_sessions))
+        except Exception:
+            pass
+
+
 SESSION_TTL = 3600 * 8
 
 
@@ -52,6 +81,9 @@ async def startup():
     except FileNotFoundError:
         _settings = {}
     _settings["_config_path"] = str(cfg_path)
+    global _sessions_file
+    _sessions_file = cfg_path.parent / ".sessions"
+    _load_sessions()
     _snapshot_manager = SnapshotManager(retention=_settings.get("dam", {}).get("snapshot_retention", 10))
 
 
@@ -229,6 +261,7 @@ async def login(req: LoginRequest, response: Response):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     token = secrets.token_hex(32)
     _sessions[token] = time.time() + SESSION_TTL
+    _save_sessions()
     response.set_cookie(key="dam_session", value=token, httponly=True, max_age=SESSION_TTL, samesite="lax")
     return {"status": "ok"}
 
@@ -238,6 +271,7 @@ async def logout(request: Request, response: Response):
     token = request.cookies.get("dam_session")
     if token:
         _sessions.pop(token, None)
+    _save_sessions()
     response.delete_cookie("dam_session")
     return {"status": "ok"}
 
@@ -664,6 +698,85 @@ async def update_settings(req: SettingsUpdateRequest, _=Depends(require_auth)):
     return {"ok": True}
 
 
+@app.get("/api/daemon")
+async def daemon_status(_=Depends(require_auth)):
+    """Return current daemon installation status."""
+    try:
+        from dam.daemon.service import DaemonService
+        schedule = _settings.get("daemon", {}).get("schedule", "0 2 * * *")
+        svc = DaemonService(_platform, schedule=schedule, settings=_settings)
+        return svc.status()
+    except Exception as e:
+        schedule = _settings.get("daemon", {}).get("schedule", "0 2 * * *")
+        return {"installed": False, "error": str(e), "schedule": schedule}
+
+
+class DaemonInstallRequest(BaseModel):
+    schedule: Optional[str] = None
+
+
+@app.post("/api/daemon/install")
+async def daemon_install(req: DaemonInstallRequest, _=Depends(require_auth)):
+    """Install DAM daemon (cron or systemd)."""
+    try:
+        from dam.daemon.service import DaemonService
+        schedule = req.schedule or _settings.get("daemon", {}).get("schedule", "0 2 * * *")
+        # Save schedule to settings
+        if "daemon" not in _settings:
+            _settings["daemon"] = {}
+        _settings["daemon"]["schedule"] = schedule
+        cfg_path = Path(_settings.get("_config_path", "/app/config/settings.yaml"))
+        save_settings = {k: v for k, v in _settings.items() if not k.startswith("_")}
+        cfg_path.parent.mkdir(parents=True, exist_ok=True)
+        cfg_path.write_text(yaml.dump(save_settings, default_flow_style=False))
+        svc = DaemonService(_platform, schedule=schedule, settings=_settings)
+        result = svc.install()
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/daemon/remove")
+async def daemon_remove(_=Depends(require_auth)):
+    """Remove DAM daemon."""
+    try:
+        from dam.daemon.service import DaemonService
+        schedule = _settings.get("daemon", {}).get("schedule", "0 2 * * *")
+        svc = DaemonService(_platform, schedule=schedule, settings=_settings)
+        result = svc.remove()
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/daemon/run-now")
+async def daemon_run_now(_=Depends(require_auth)):
+    """Trigger an immediate DAM update run."""
+    try:
+        inspector = Inspector(_platform)
+        configs = inspector.inspect_all(settings_containers=_settings.get("containers", {}) or {})
+        from dam.core.updater import Updater
+        from dam.core.pruner import Pruner
+        dam_cfg = _settings.get("dam", {})
+        updater = Updater(
+            _platform,
+            dry_run=False,
+            recreate_delay=dam_cfg.get("recreate_delay", 5),
+        )
+        # Save snapshot first
+        _snapshot_manager.save(configs, _platform, label="pre-daemon-run-web")
+        results = updater.update_all(configs)
+        updated = sum(1 for r in results if r.status.value == "updated")
+        failed = sum(1 for r in results if r.status.value == "failed")
+        # Auto-prune if configured
+        if dam_cfg.get("auto_prune", True):
+            Pruner().prune()
+        return {"ok": True, "updated": updated, "failed": failed,
+                "results": [{"name": r.name, "status": r.status.value, "error": r.error} for r in results]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/dam/version")
 async def dam_version_check(_=Depends(require_auth)):
     from dam.web.dam_updater import check_latest_version
@@ -681,6 +794,29 @@ async def dam_self_update(_=Depends(require_auth)):
             "message": result.message, "restart_required": result.restart_required}
 
 _static_dir = Path(__file__).parent / "static"
+
+
+@app.get("/static/{filepath:path}")
+async def serve_static(filepath: str):
+    """Serve static files including webfonts subdirectory."""
+    from fastapi.responses import FileResponse
+    full_path = _static_dir / filepath
+    # Security: must stay within static dir
+    try:
+        full_path.resolve().relative_to(_static_dir.resolve())
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if not full_path.exists() or not full_path.is_file():
+        raise HTTPException(status_code=404, detail=f"Not found: {filepath}")
+    media_types = {
+        ".js": "application/javascript", ".css": "text/css",
+        ".woff2": "font/woff2", ".woff": "font/woff",
+        ".ttf": "font/ttf", ".eot": "application/vnd.ms-fontobject",
+        ".svg": "image/svg+xml", ".png": "image/png",
+    }
+    suffix = full_path.suffix.lower()
+    media_type = media_types.get(suffix, "application/octet-stream")
+    return FileResponse(full_path, media_type=media_type)
 
 
 @app.get("/", response_class=HTMLResponse)

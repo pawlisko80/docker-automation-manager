@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Docker Automation Manager</title>
-<link rel="stylesheet" href="/static/fa.min.css">
+<link rel="stylesheet" href="/static/fa.min.css" onerror="this.onerror=null;this.href='https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css'">
 <style>
 :root{--bg:#0f1117;--bg2:#1a1d2e;--bg3:#242842;--border:#2e3256;--accent:#4f8ef7;--accent2:#7c5cfc;--green:#22c55e;--yellow:#f59e0b;--red:#ef4444;--dim:#6b7280;--text:#e2e8f0;--text2:#94a3b8}
 .light{--bg:#f8fafc;--bg2:#fff;--bg3:#f1f5f9;--border:#e2e8f0;--accent:#2563eb;--accent2:#7c3aed;--green:#16a34a;--yellow:#d97706;--red:#dc2626;--dim:#94a3b8;--text:#1e293b;--text2:#64748b}
@@ -53,7 +53,7 @@ tr:hover td{background:var(--bg3)}
 .btn-ok{background:rgba(34,197,94,.15);color:var(--green);border:1px solid rgba(34,197,94,.3)}.btn-ok:hover{background:rgba(34,197,94,.25)}
 .btn-w{background:rgba(245,158,11,.15);color:var(--yellow);border:1px solid rgba(245,158,11,.3)}
 .btn:disabled{opacity:.4;cursor:not-allowed}.btn-sm{padding:4px 10px;font-size:12px}
-.bti{padding:5px 8px;border-radius:5px;background:transparent;border:1px solid var(--border);color:var(--text2);cursor:pointer;font-size:12px}.bti:hover{background:var(--bg3);color:var(--text)}
+.bti{padding:5px 8px;border-radius:5px;background:transparent;border:1px solid var(--border);color:var(--text2);cursor:pointer;font-size:12px}.bti:hover{background:var(--bg3);color:var(--text)}.btn-fb{font-size:11px}
 input[type=text],input[type=password],input[type=search],select{background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:6px;font-size:13px;width:100%}
 input:focus,select:focus{outline:none;border-color:var(--accent)}
 label{font-size:12px;color:var(--text2);margin-bottom:4px;display:block}.fg{margin-bottom:12px}
@@ -121,6 +121,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
       <div class="nav-item" :class="{active:pg==='snaps'}" @click="go('snaps')"><i class="fa fa-camera"></i> Snapshots</div>
       <div class="nav-item" :class="{active:pg==='import'}" @click="go('import')"><i class="fa fa-file-import"></i> Import</div>
       <div class="nav-sep"></div>
+      <div class="nav-item" :class="{active:pg==='daemon'}" @click="go('daemon')"><i class="fa fa-clock"></i> Scheduler</div>
       <div class="nav-item" :class="{active:pg==='settings'}" @click="go('settings')"><i class="fa fa-gear"></i> Settings</div>
     </nav>
     <div class="sidebar-footer">
@@ -202,10 +203,10 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
                 </td>
                 <td>
                   <div class="abtns">
-                    <button class="bti" title="Logs" @click="openLog(c.name)"><i class="fa fa-file-lines"></i></button>
-                    <button class="bti" title="Start" @click="cact(c.name,'start')" x-show="c.status!=='running'"><i class="fa fa-play" style="color:var(--green)"></i></button>
-                    <button class="bti" title="Stop" @click="cact(c.name,'stop')" x-show="c.status==='running'"><i class="fa fa-stop" style="color:var(--yellow)"></i></button>
-                    <button class="bti" title="Restart" @click="cact(c.name,'restart')"><i class="fa fa-rotate-right" style="color:var(--accent)"></i></button>
+                    <button class="bti" title="Logs" @click="openLog(c.name)">Logs</button>
+                    <button class="bti" title="Start" @click="cact(c.name,'start')" x-show="c.status!=='running'" style="color:var(--green)">Start</button>
+                    <button class="bti" title="Stop" @click="cact(c.name,'stop')" x-show="c.status==='running'" style="color:var(--yellow)">Stop</button>
+                    <button class="bti" title="Restart" @click="cact(c.name,'restart')" style="color:var(--accent)">↺</button>
                   </div>
                 </td>
               </tr>
@@ -452,7 +453,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
         <button class="btn btn-s btn-sm mla" @click="takeSnap()" :disabled="ld.snap"><i class="fa fa-camera"></i> Take Snapshot</button>
         <button class="btn btn-s btn-sm" @click="loadSnaps()"><i class="fa fa-refresh"></i> Refresh</button>
       </div>
-      <div class="alert as" x-show="snapMsg" x-text="snapMsg" style="margin-bottom:12px"></div>
+      <div class="alert" :class="snapErr?'ad':'as'" x-show="snapMsg" x-text="snapMsg" style="margin-bottom:12px"></div>
       <div class="card" x-show="ld.snaps"><div class="spin"></div> Loading...</div>
       <div class="alert ai" x-show="!ld.snaps&&snaps.length===0">No snapshots yet. Click "Take Snapshot" to create a baseline.</div>
       <div class="card" style="padding:0;overflow:hidden" x-show="!ld.snaps&&snaps.length>0">
@@ -534,8 +535,15 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
         <div class="page-title">Import Containers</div>
       </div>
       <div class="card" style="margin-bottom:12px">
-        <div class="card-title">Paste DAM YAML</div>
-        <textarea x-model="imp.yaml" placeholder="Paste contents of a .dam.yaml export file here..." style="width:100%;height:180px;font-family:monospace;font-size:12px;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px;box-sizing:border-box;resize:vertical"></textarea>
+        <div class="card-title">DAM YAML — paste or load from file</div>
+        <div style="margin-bottom:8px">
+          <label class="btn btn-s btn-sm" style="cursor:pointer;display:inline-block">
+            <i class="fa fa-folder-open"></i> Choose File
+            <input type="file" accept=".yaml,.yml" style="display:none" @change="impLoadFile($event)">
+          </label>
+          <span class="dim" style="font-size:12px;margin-left:8px" x-text="imp.filename||'No file chosen'"></span>
+        </div>
+        <textarea x-model="imp.yaml" placeholder="Paste contents of a .dam.yaml export file here, or choose a file above..." style="width:100%;height:180px;font-family:monospace;font-size:12px;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px;box-sizing:border-box;resize:vertical"></textarea>
         <div class="flex gap" style="margin-top:10px;align-items:center;flex-wrap:wrap;gap:8px">
           <label style="display:flex;align-items:center;gap:6px;font-size:13px">
             <input type="checkbox" x-model="imp.overwrite"> Overwrite existing containers
@@ -582,6 +590,91 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
             </tbody>
           </table>
         </div>
+      </div>
+    </div>
+
+    <!-- Scheduler / Daemon page -->
+    <div x-show="pg==='daemon'">
+      <div class="flex gap mb16">
+        <div class="page-title">Scheduler</div>
+        <button class="btn btn-s btn-sm mla" @click="loadDaemon()"><i class="fa fa-refresh"></i> Refresh</button>
+      </div>
+      <div class="card" x-show="ld.daemon"><div class="spin"></div> Loading...</div>
+      <div x-show="!ld.daemon&&dmn">
+
+        <!-- Status card -->
+        <div class="card" style="margin-bottom:12px">
+          <div class="card-title"><i class="fa fa-circle-info"></i> Daemon Status</div>
+          <table class="stbl" style="margin-top:8px">
+            <tr><td class="dim">Installed</td><td>
+              <span x-show="dmn.installed" class="bs bs-running">● installed</span>
+              <span x-show="!dmn.installed" class="bs bs-exited">○ not installed</span>
+            </td></tr>
+            <tr><td class="dim">Method</td><td x-text="dmn.method||'—'"></td></tr>
+            <tr><td class="dim">Schedule</td><td x-text="dmn.schedule||'—'"></td></tr>
+            <tr><td class="dim">Description</td><td x-text="dmn.schedule_description||'—'"></td></tr>
+            <tr><td class="dim">Next run</td><td x-text="dmn.next_run||'—'"></td></tr>
+            <tr><td class="dim">Last run</td><td x-text="dmn.last_run_at||'never'"></td></tr>
+            <tr><td class="dim">Last result</td><td x-text="dmn.last_run_status||'—'"></td></tr>
+            <tr x-show="dmn.last_updated_count!==undefined">
+              <td class="dim">Last updated</td>
+              <td><span x-text="dmn.last_updated_count"></span> containers,
+                  <span x-text="dmn.last_failed_count"></span> failed</td>
+            </tr>
+          </table>
+        </div>
+
+        <!-- Schedule editor -->
+        <div class="card" style="margin-bottom:12px">
+          <div class="card-title"><i class="fa fa-sliders"></i> Schedule</div>
+          <div class="frow" style="margin-top:8px;max-width:320px">
+            <label class="flbl">Cron expression (minute hour day month weekday)</label>
+            <input type="text" x-model="dmn.edit_schedule" class="finp" placeholder="0 2 * * *">
+          </div>
+          <div style="margin-top:4px;font-size:11px;color:var(--dim)">
+            Examples: <code>0 2 * * *</code> = daily at 2am &nbsp;·&nbsp;
+            <code>0 3 * * 0</code> = weekly Sunday 3am &nbsp;·&nbsp;
+            <code>0 */6 * * *</code> = every 6 hours
+          </div>
+          <div class="alert ad" x-show="dmn.err" x-text="dmn.err" style="margin-top:8px"></div>
+          <div class="alert as" x-show="dmn.ok" x-text="dmn.ok" style="margin-top:8px"></div>
+          <div class="flex gap" style="margin-top:12px;flex-wrap:wrap;gap:8px">
+            <button class="btn" @click="daemonInstall()" :disabled="ld.daemonact">
+              <span x-show="dmn.installed"><i class="fa fa-rotate"></i> Reinstall / Update Schedule</span>
+              <span x-show="!dmn.installed"><i class="fa fa-plus"></i> Install Daemon</span>
+            </button>
+            <button class="btn" style="background:var(--red);border-color:var(--red)"
+              x-show="dmn.installed" @click="daemonRemove()" :disabled="ld.daemonact">
+              <i class="fa fa-trash"></i> Remove Daemon
+            </button>
+            <button class="btn btn-s" @click="daemonRunNow()" :disabled="ld.daemonrun" style="margin-left:auto">
+              <span x-show="ld.daemonrun"><i class="fa fa-spinner fa-spin"></i> Running...</span>
+              <span x-show="!ld.daemonrun"><i class="fa fa-play"></i> Run Now</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Run Now results -->
+        <div class="card" x-show="dmn.runResult" style="margin-bottom:12px">
+          <div class="card-title">Last Manual Run</div>
+          <div class="flex gap" style="margin-bottom:8px">
+            <span class="bs bs-running" x-text="(dmn.runResult&&dmn.runResult.updated||0)+' updated'"></span>
+            <span class="bs bs-exited" x-show="dmn.runResult&&dmn.runResult.failed>0" x-text="dmn.runResult.failed+' failed'"></span>
+          </div>
+          <table x-show="dmn.runResult&&dmn.runResult.results&&dmn.runResult.results.length">
+            <thead><tr><th>Container</th><th>Status</th><th>Details</th></tr></thead>
+            <tbody>
+              <template x-for="r in dmn.runResult&&dmn.runResult.results||[]" :key="r.name">
+                <tr>
+                  <td><strong x-text="r.name"></strong></td>
+                  <td><span :class="r.status==='updated'?'bs bs-running':r.status==='failed'?'bs bs-exited':'bs bs-paused'" x-text="r.status"></span></td>
+                  <td class="dim" style="font-size:12px" x-text="r.error||''"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+
       </div>
     </div>
 
@@ -671,7 +764,7 @@ auth:false,lf:{u:'',p:''},le:'',ll:false,
 pg:'dash',ver:'',plat:'',dark:true,q:'',ar:false,_art:null,
 cs:[],ld:{},
 eolR:[],eolS:{},eolW:0,
-drift:{},snaps:[],snapD:null,snapMsg:'',imp:{yaml:'',preview:null,results:null,err:'',overwrite:false},pw:{cur:'',usr:'',new1:'',new2:'',err:'',ok:''},sett:null,
+drift:{},snaps:[],snapD:null,snapMsg:'',snapErr:false,imp:{yaml:'',preview:null,results:null,err:'',overwrite:false,filename:''},pw:{cur:'',usr:'',new1:'',new2:'',err:'',ok:''},sett:null,dmn:null,
 us:1,sel:[],drr:[],drs:{},ulog:[],usum:{},sid:null,
 pc:null,pr:null,
 expSel:[],expFmt:'dam-yaml',
@@ -734,6 +827,7 @@ go(p){
   if(p==='export')this.loadC();
   if(p==='selfupd')this.chkDv();
   if(p==='settings')this.loadSettings();
+  if(p==='daemon')this.loadDaemon();
 },
 
 async loadC(){
@@ -750,6 +844,14 @@ async loadDrift(){
   this.ld.drift=true;
   try{const d=await this.api('/api/drift');if(d)this.drift=d;}
   catch(e){}finally{this.ld.drift=false;}
+},
+impLoadFile(e){
+  const file=e.target.files[0];
+  if(!file)return;
+  this.imp.filename=file.name;
+  const r=new FileReader();
+  r.onload=ev=>{this.imp.yaml=ev.target.result;this.imp.preview=null;this.imp.results=null;};
+  r.readAsText(file);
 },
 async impPreview(){
   this.ld.imp=true;this.imp.err='';this.imp.preview=null;this.imp.results=null;
@@ -779,13 +881,13 @@ async changePwd(){
   finally{this.ld.pw=false;}
 },
 async takeSnap(){
-  this.ld.snap=true;this.snapMsg='';
+  this.ld.snap=true;this.snapMsg='';this.snapErr=false;
   try{
     const d=await this.api('/api/snapshots',{method:'POST'});
-    this.snapMsg=d.ok?'\u2713 Snapshot saved: '+d.filename:'Failed to save snapshot';
-    await this.loadSnaps();
-  }catch(e){this.snapMsg='Error: '+e.message;}
-  finally{this.ld.snap=false;setTimeout(()=>this.snapMsg='',4000);}
+    if(d&&d.ok){this.snapMsg='\u2713 Snapshot saved: '+d.filename;await this.loadSnaps();}
+    else{this.snapErr=true;this.snapMsg='Failed: '+(d&&d.detail||'unknown error');}
+  }catch(e){this.snapErr=true;this.snapMsg='Error: '+e.message;}
+  finally{this.ld.snap=false;setTimeout(()=>{this.snapMsg='';this.snapErr=false;},5000);}
 },
 async loadSnaps(){
   this.ld.snaps=true;
@@ -880,6 +982,42 @@ async doExp(){
   }catch(e){alert(e.message);}finally{this.ld.exp=false;}
 },
 
+async loadDaemon(){
+  this.ld.daemon=true;
+  try{
+    const d=await this.api('/api/daemon');
+    if(d){this.dmn=d;this.dmn.edit_schedule=d.schedule||'0 2 * * *';this.dmn.err='';this.dmn.ok='';this.dmn.runResult=null;}
+  }catch(e){}finally{this.ld.daemon=false;}
+},
+async daemonInstall(){
+  this.ld.daemonact=true;this.dmn.err='';this.dmn.ok='';
+  try{
+    const d=await this.api('/api/daemon/install',{method:'POST',body:JSON.stringify({schedule:this.dmn.edit_schedule})});
+    if(d&&d.success){this.dmn.ok='\u2713 '+d.message;await this.loadDaemon();}
+    else{this.dmn.err=(d&&d.message)||'Install failed';}
+  }catch(e){this.dmn.err=e.message;}
+  finally{this.ld.daemonact=false;}
+},
+async daemonRemove(){
+  if(!confirm('Remove DAM daemon? Scheduled runs will stop.'))return;
+  this.ld.daemonact=true;this.dmn.err='';this.dmn.ok='';
+  try{
+    const d=await this.api('/api/daemon/remove',{method:'POST'});
+    if(d&&d.success){this.dmn.ok='\u2713 Daemon removed';await this.loadDaemon();}
+    else{this.dmn.err=(d&&d.message)||'Remove failed';}
+  }catch(e){this.dmn.err=e.message;}
+  finally{this.ld.daemonact=false;}
+},
+async daemonRunNow(){
+  if(!confirm('Run a full update now? Containers will be recreated if images have changed.'))return;
+  this.ld.daemonrun=true;this.dmn.err='';this.dmn.runResult=null;
+  try{
+    const d=await this.api('/api/daemon/run-now',{method:'POST'});
+    if(d)this.dmn.runResult=d;
+    await this.loadDaemon();
+  }catch(e){this.dmn.err=e.message;}
+  finally{this.ld.daemonrun=false;}
+},
 async loadSettings(){
   this.ld.settings=true;
   try{const d=await this.api('/api/settings');if(d){this.sett=d;this.sett.err='';this.sett.savedok='';}}

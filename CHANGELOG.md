@@ -11,6 +11,37 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.5.0] — 2026-04-07
+
+### Added
+
+- **Scheduler page** — view daemon status, install/remove cron or systemd, change cron expression, Run Now button with live results table
+- **Import from file** — file picker on Import page (`.yaml`/`.yml`), reads file client-side via FileReader API alongside existing paste
+- **Session persistence** — sessions saved to `.sessions` file next to `settings.yaml`; survive `docker restart`; fixes login when accessing via hostname vs IP address
+- **Static file server** — proper `/static/{filepath:path}` route with `webfonts/` subdirectory support for Font Awesome
+- `scripts/fetch-static.sh` — one-shot script to download Alpine.js + Font Awesome CSS + webfonts for restricted/offline networks
+- New API endpoints:
+  - `GET  /api/daemon` — daemon status (installed, method, schedule, next/last run, last counts)
+  - `POST /api/daemon/install` — install daemon (cron or systemd) with optional schedule override
+  - `POST /api/daemon/remove` — remove daemon
+  - `POST /api/daemon/run-now` — trigger immediate full update run from web UI
+
+### Fixed
+
+- **Dark/light mode toggle** — `:class` binding on `<body>` was lost when moving `x-data` from `<html>` to `<body>` tag; restored
+- **Export browser download** — added `expose_headers: [Content-Disposition]` to CORS config; header was previously blocked by browser security
+- **Snapshot button feedback** — error/success messages now correctly styled red/green; null API response handled gracefully
+- **Action buttons invisible** — buttons now show text labels (`Logs`, `Stop`, `Start`, `↺`) without requiring Font Awesome
+- **FA icons 404** — `onerror` CDN fallback on `<link>` tag; static server now properly serves `webfonts/` subdirectory
+- **Import file picker** — file input reads YAML client-side and populates textarea, no server upload needed
+
+### Changed
+
+- CORS middleware now exposes `Content-Disposition` and `X-Filename` response headers
+- Session cookie uses `samesite=lax`; sessions persisted to disk across container restarts
+
+---
+
 ## [0.4.0] — 2026-04-06
 
 ### Added
@@ -24,43 +55,28 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Clickable port links — http/https auto-detected (443/8443/9443 = HTTPS)
 - Container tag pills — reads `dockpeek.tags` / `dam.tags` labels
 - Clickable container names — auto-link to service web UI (IP + resolved port)
-- Port auto-detection — priority order: `dam.ports` label → env vars (`WEB_PORT`, `PORT`, etc.) → `ExposedPorts` → well-known image map
+- Port auto-detection — priority: `dam.ports` label → env vars (`WEB_PORT`, `PORT`, etc.) → `ExposedPorts` → well-known image map
 - Host-mode container links — use `window.location.hostname` for correct routing
-- Extra ports display — reads `dockpeek.ports` / `dam.ports` labels
-- DAM self-update panel — checks GitHub releases API, shows version badge in sidebar
-  - git pull (if .git dir present) with zip download fallback
 - **Import page** — paste DAM YAML → Preview → Dry Run → live Import
-- **Settings page** — platform info, Docker engine info, editable DAM config (retention, delay, schedule, auto-prune), change password
-- **Take Snapshot button** in web UI Snapshots page — no CLI required
-- `POST /api/snapshots` — take snapshot from web UI
-- `GET/POST /api/settings` — read and update DAM configuration
-- `POST /api/import/preview` — parse and validate YAML without creating containers
-- `POST /api/import/run` — recreate containers from DAM YAML (dry-run or live)
-- `POST /api/auth/change-password` — change web UI password from browser
-- New API endpoints:
-  - `GET  /api/containers/{name}/logs?tail=N&follow=bool` — SSE log stream
-  - `POST /api/containers/{name}/start|stop|restart` — container lifecycle
-  - `GET  /api/dam/version` — check GitHub releases for latest version
-  - `POST /api/dam/update` — trigger self-update
+- **Settings page** — platform info, Docker engine info, editable DAM config, change password
+- **Take Snapshot button** in Snapshots page — no CLI required
+- New API endpoints: `/api/snapshots` POST, `/api/settings` GET+POST, `/api/import/preview`, `/api/import/run`, `/api/auth/change-password`
+- `/api/containers/{name}/logs`, `/api/containers/{name}/start|stop|restart`
+- `/api/dam/version`, `/api/dam/update`
 
 ### Fixed
 
-- **Critical: JS syntax error** — literal newline inside JS string in `write_html.py` caused `dam()` function to never parse (blank screen on all browsers)
-- **Alpine.js initialization** — moved `x-data="dam()"` from `<html>` to `<body>` tag; Alpine v3 does not reliably initialize on `<html>`
-- **CDN blocked on restricted networks** — Alpine.js and Font Awesome now served locally from `/static/` instead of cdnjs.cloudflare.com
-- **Password format unification** — `dam --web-passwd` now writes `sha256:salt:hash` format; old bcrypt and `auth[]` list formats caused persistent login failures
-- `_verify_password` now handles all three formats: `sha256:salt:hash`, `$2b$` bcrypt (legacy), plain sha256
-- **Port detection for macvlan/host containers** — env var ports (`WEB_PORT=80`) take exclusive priority over `ExposedPorts`; well-known image map as final fallback
-- TUI export, import, and drift prompts now accept `q` to cancel — previously trapped the user with no escape
-- Removed stale `determined_mestorf` debug container from inspection results
-- All flake8 warnings resolved — unused imports, F541, F841, E704, E303, E301, E271, E128
+- **Critical: JS syntax error** — literal newline inside JS string caused `dam()` to never parse (blank screen)
+- **Alpine.js initialization** — moved `x-data` from `<html>` to `<body>` tag
+- **CDN blocked on QNAP** — Alpine.js and Font Awesome served from `/static/` locally
+- **Password format** — `dam --web-passwd` now writes `sha256:salt:hash`; `_verify_password` handles bcrypt legacy + sha256
+- TUI export, import, drift prompts now accept `q` to cancel
+- All flake8 warnings resolved
 
 ### Changed
 
-- `dam --web-passwd` rewrites settings in flat `web.username` + `web.password_hash` format, removes legacy `web.auth[]` list
-- Port links for published-port containers now use container IP instead of `localhost`
-- Snapshot empty-state message updated to prompt user to take a snapshot
-- Version bumped to 0.4.0
+- `dam --web-passwd` writes flat `web.username` + `web.password_hash` format, removes legacy `web.auth[]` list
+- Port links use container IP instead of `localhost`
 
 ---
 
@@ -68,22 +84,11 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- `dam/web/` — Full web UI (FastAPI + Alpine.js single-file SPA)
-  - Login with hashed password (sha256 fallback for QNAP)
-  - Dashboard: container table with status, IPs, EOL warnings
-  - Update: 3-step flow — select → dry run → confirm → live progress stream (SSE)
-  - Drift: visual diff table with severity color coding
-  - EOL Check: deprecated/archived/EOL image warnings with alternatives
-  - Prune: preview + confirm before removing images
-  - Export: checkbox picker + 3 format options + browser download
-  - Snapshots: list + view detail
-- `dam --web` — launch web UI (default: http://localhost:8080)
-- `dam --web --host 0.0.0.0 --port 8080` — bind to network (QNAP access from browser)
-- `dam --web-passwd` — interactive password setup
+- `dam/web/` — Full web UI (FastAPI + Alpine.js SPA)
+- Login with sha256-hashed password
+- Dashboard, Update (SSE progress), Drift, EOL Check, Prune, Export, Snapshots pages
+- `dam --web`, `dam --web --host 0.0.0.0 --port 8080`, `dam --web-passwd`
 - Cookie session auth with configurable TTL
-- FastAPI with SSE streaming for update progress
-- `dam/web/auth.py` — password hashing and session management
-- `dam/web/server.py` — FastAPI application with all endpoints
 
 ---
 
@@ -91,13 +96,11 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- `dam/core/exporter.py` — export container configs as DAM YAML, shell script (`docker run`), or `docker-compose.yml`
-- `dam/core/importer.py` — recreate containers from DAM YAML export; dry-run mode; overwrite flag
+- `dam/core/exporter.py` — export as DAM YAML, shell script, docker-compose
+- `dam/core/importer.py` — recreate containers from DAM YAML; dry-run + overwrite
 - `dam/core/deprecation.py` + `data/eol.yaml` — bundled EOL/deprecation database
-  - watchtower (archived Dec 2025), portainer CE, ouroboros, letsencrypt→swag migration, postgres EOL versions
-- CLI flags: `--export`, `--import-file`, `--eol-check`
-- TUI menu options 7 (Export), 8 (Import), 9 (EOL Check)
-- Exit code 3 when `--eol-check` finds deprecated images
+- CLI `--export`, `--import-file`, `--eol-check`; TUI options 7/8/9
+- Exit code 3 on deprecated images
 
 ---
 
@@ -106,12 +109,6 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - Platform auto-detection: QNAP, Synology, Generic Linux
-- `dam/core/inspector.py` — reads full container config via Docker SDK (no shell parsing)
-- `dam/core/snapshot.py` — save/load/list YAML snapshots with configurable retention
-- `dam/core/updater.py` — digest-compare update with static IP preservation
-- `dam/core/pruner.py` — remove dangling/unused images, dry-run mode
-- `dam/core/drift.py` — 5-level severity diff (critical/high/medium/low/info)
-- Rich TUI with 9-option interactive menu, progress bars, color-coded tables
-- Click CLI with full flag coverage
-- `dam/daemon/` — cron and systemd daemon installer
-- 281 unit tests, fully mocked (no live Docker daemon required)
+- Inspector, Snapshot, Updater, Pruner, Drift, Exporter, Importer, Deprecation modules
+- Rich TUI (9 options), Click CLI, Daemon installer
+- 281 unit tests, fully mocked
