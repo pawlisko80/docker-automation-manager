@@ -657,17 +657,17 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
           <div class="alert ad" x-show="dmn.err" x-text="dmn.err" style="margin-top:8px"></div>
           <div class="alert as" x-show="dmn.ok" x-text="dmn.ok" style="margin-top:8px"></div>
           <div class="flex gap" style="margin-top:12px;flex-wrap:wrap;gap:8px;align-items:center">
-            <button class="btn" @click="daemonInstall()" :disabled="ld.daemonact"
-              x-text="dmn.installed ? 'Update Schedule' : 'Install Daemon'">
+            <button class="btn" @click="daemonInstall()" :disabled="ld.daemonact===true">
+              <span x-text="dmn.installed ? 'Update Schedule' : 'Install Daemon'">Install Daemon</span>
             </button>
             <button class="btn" style="background:var(--red);border-color:var(--red)"
-              x-show="dmn&&dmn.installed" @click="daemonRemove()" :disabled="ld.daemonact">
+              x-show="dmn&&dmn.installed" @click="daemonRemove()" :disabled="ld.daemonact===true">
               Remove Daemon
             </button>
             <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
               <span class="dim" style="font-size:12px">Trigger an update right now:</span>
-              <button class="btn" @click="daemonRunNow()" :disabled="ld.daemonrun">
-                <span x-text="ld.daemonrun ? 'Running...' : 'Run Now'"></span>
+              <button class="btn" @click="daemonRunNow()" :disabled="ld.daemonrun===true">
+                <span x-text="ld.daemonrun ? 'Running...' : 'Run Now'">Run Now</span>
               </button>
             </div>
           </div>
