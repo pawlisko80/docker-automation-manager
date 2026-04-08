@@ -206,7 +206,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
                     <button class="bti" title="Logs" @click="openLog(c.name)">Logs</button>
                     <button class="bti" title="Start" @click="cact(c.name,'start')" x-show="c.status!=='running'" style="color:var(--green)">Start</button>
                     <button class="bti" title="Stop" @click="cact(c.name,'stop')" x-show="c.status==='running'" style="color:var(--yellow)">Stop</button>
-                    <button class="bti" title="Restart" @click="cact(c.name,'restart')" style="color:var(--accent)">↺</button>
+                    <button class="bti" title="Restart" @click="cact(c.name,'restart')" style="color:var(--accent)">Restart</button>
                   </div>
                 </td>
               </tr>
