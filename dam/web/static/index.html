@@ -155,7 +155,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
           <label style="margin:0;color:var(--dim);font-size:12px">
             <input type="checkbox" x-model="ar" @change="togAR()"> Auto-refresh
           </label>
-          <button class="bti" @click="loadC()" title="Reload containers" style="padding:6px 14px;font-size:13px;border-radius:6px">↻ Reload</button>
+          <button class="btn btn-s btn-sm" @click="loadC()">↻ Reload</button>
         </div>
       </div>
       <div class="stats" x-show="cs.length>0">
@@ -316,9 +316,9 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
       <div class="flex gap mb16" style="align-items:center">
         <div class="page-title">Drift Detection</div>
         <button class="btn btn-s btn-sm" @click="loadDrift()">↻ Refresh</button>
-        <button class="btn btn-s btn-sm" @click="driftResetBaseline()" :disabled="ld.driftReset" title="Take a new snapshot to use as the drift baseline" style="margin-left:4px">📷 Reset Baseline</button>
+        <button class="btn btn-s btn-sm" @click="driftResetBaseline()" :disabled="ld.driftReset===true" title="Take a new snapshot to use as the drift baseline" style="margin-left:4px">📷 Reset Baseline</button>
       </div>
-      <div class="alert as" x-show="driftResetOk" x-text="driftResetOk" style="margin-bottom:8px"></div>
+      <div class="alert" :class="driftResetOk&&driftResetOk.startsWith('✗')?'ad':'as'" x-show="driftResetOk" x-text="driftResetOk" style="margin-bottom:8px"></div>
       <div class="card" x-show="ld.drift"><div class="spin"></div> Analyzing...</div>
       <div class="alert ai" x-show="!ld.drift&&drift.message">ℹ <span x-text="drift.message"></span></div>
       <div class="alert as" x-show="!ld.drift&&!drift.has_drift&&!drift.message">✓ No drift detected (<span x-text="drift.snapshot_label"></span>).</div>
@@ -466,7 +466,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
     <div x-show="pg==='snaps'">
       <div class="flex gap mb16" style="align-items:center">
         <div class="page-title">Snapshots</div>
-        <button class="btn btn-s btn-sm mla" @click="takeSnap()" :disabled="ld.snap">📷 Take Snapshot</button>
+        <button class="btn btn-s btn-sm mla" @click="takeSnap()" :disabled="ld.snap===true">📷 Take Snapshot</button>
         <button class="btn btn-s btn-sm" @click="loadSnaps()">↻ Refresh</button>
       </div>
       <div class="alert" :class="snapErr?'ad':'as'" x-show="snapMsg" x-text="snapMsg" style="margin-bottom:12px"></div>
@@ -534,7 +534,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
         <strong> Update replaces DAM source files.</strong>
         Tries git pull first, falls back to GitHub zip download. Restart server after updating.
       </div>
-      <button class="btn btn-w" @click="doSelfUpd()" :disabled="ld.su||!dv.upd">
+      <button class="btn btn-w" @click="doSelfUpd()" :disabled="ld.su||!dv||!dv.upd">
         <span x-show="ld.su" class="spin"></span>
         ↓
         Update to v<span x-text="dv.latest||'latest'"></span>
@@ -660,7 +660,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
               x-text="dmn.installed ? '↻ Reinstall / Update Schedule' : '+ Install Daemon'">
             </button>
             <button class="btn" style="background:var(--red);border-color:var(--red)"
-              x-show="dmn.installed" @click="daemonRemove()" :disabled="ld.daemonact">
+              x-show="dmn&&dmn.installed" @click="daemonRemove()" :disabled="ld.daemonact">
               ✕ Remove Daemon
             </button>
             <button class="btn btn-s" @click="daemonRunNow()" :disabled="ld.daemonrun" style="margin-left:auto">
@@ -836,7 +836,7 @@ async logout(){
 go(p){
   this.pg=p;
   if(p==='drift')this.loadDrift();
-  if(p==='snaps')this.loadSnaps();
+  if(p==='snaps'){this.snapMsg='';this.snapErr=false;this.loadSnaps();}
   if(p==='update'){this.us=1;this.loadC();}
   if(p==='prune'){this.pc=null;this.pr=null;}
   if(p==='export')this.loadC();
@@ -937,12 +937,12 @@ async takeSnap(){
     if(r.ok&&d&&d.ok){this.snapMsg='\u2713 Snapshot saved: '+d.filename;await this.loadSnaps();}
     else{this.snapErr=true;this.snapMsg='Failed ('+r.status+'): '+(d&&(d.detail||d.message)||'unknown');}
   }catch(e){this.snapErr=true;this.snapMsg='Error: '+e.message;}
-  finally{this.ld.snap=false;setTimeout(()=>{this.snapMsg='';this.snapErr=false;},8000);}
+  finally{this.ld.snap=false;}
 },
 async loadSnaps(){
   this.ld.snaps=true;
-  try{const d=await this.api('/api/snapshots');if(d)this.snaps=d.snapshots;}
-  catch(e){}finally{this.ld.snaps=false;}
+  try{const d=await this.api('/api/snapshots');if(d)this.snaps=d.snapshots||[];}
+  catch(e){this.snapMsg='Load error: '+e.message;this.snapErr=true;}finally{this.ld.snaps=false;}
 },
 async viewSnap(id){const d=await this.api('/api/snapshots/'+id);if(d)this.snapD=d;},
 
