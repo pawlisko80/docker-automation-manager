@@ -155,7 +155,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
           <label style="margin:0;color:var(--dim);font-size:12px">
             <input type="checkbox" x-model="ar" @change="togAR()"> Auto-refresh
           </label>
-          <button class="btn btn-s btn-sm" @click="loadC()">↻ Reload</button>
+          <button class="btn btn-s btn-sm" @click="loadC()">Reload</button>
         </div>
       </div>
       <div class="stats" x-show="cs.length>0">
@@ -466,7 +466,10 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
     <div x-show="pg==='snaps'">
       <div class="flex gap mb16" style="align-items:center">
         <div class="page-title">Snapshots</div>
-        <button class="btn btn-s btn-sm mla" @click="takeSnap()" :disabled="ld.snap===true">📷 Take Snapshot</button>
+        <label style="font-size:12px;color:var(--dim);display:flex;align-items:center;gap:6px;margin-left:auto;cursor:pointer">
+          <input type="checkbox" x-model="snapUTC" @change=""> UTC
+        </label>
+        <button class="btn btn-s btn-sm" @click="takeSnap()" :disabled="ld.snap===true">📷 Take Snapshot</button>
         <button class="btn btn-s btn-sm" @click="loadSnaps()">↻ Refresh</button>
       </div>
       <div class="alert" :class="snapErr?'ad':'as'" x-show="snapMsg" x-text="snapMsg" style="margin-bottom:12px"></div>
@@ -479,7 +482,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
             <template x-for="s in snaps" :key="s.id">
               <tr>
                 <td class="dim" x-text="s.id+1"></td>
-                <td class="mono" x-text="s.filename"></td>
+                <td class="mono"><span x-text="snapUTC ? s.filename : fmtSnapTime(s.filename)"></span></td>
                 <td class="dim" x-text="s.size_kb+' KB'"></td>
                 <td><button class="btn btn-s btn-sm" @click="viewSnap(s.id)">👁 View</button></td>
               </tr>
@@ -490,7 +493,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
       <div x-show="snapD" style="margin-top:16px">
         <div class="card">
           <div class="card-title">Snapshot Detail <button class="btn btn-s btn-sm" @click="snapD=null" style="float:right">✕</button></div>
-          <div class="dim" style="margin-bottom:12px;font-size:12px" x-text="snapD?.meta?.captured_at"></div>
+          <div class="dim" style="margin-bottom:12px;font-size:12px" x-text="snapUTC ? (snapD&&snapD.meta&&snapD.meta.captured_at) : fmtSnapTimeDetail(snapD&&snapD.meta&&snapD.meta.captured_at)"></div>
           <table>
             <thead><tr><th>Container</th><th>Image</th><th>Status</th><th>IP</th></tr></thead>
             <tbody>
@@ -551,7 +554,12 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
         <div class="page-title">Import Containers</div>
       </div>
       <div class="card" style="margin-bottom:12px">
-        <div class="card-title">DAM YAML — paste or load from file</div>
+        <div class="card-title">DAM YAML — paste, load .yaml, or load migration .zip</div>
+        <div class="alert ai" style="margin-bottom:8px;font-size:12px">
+          💡 <strong>Tip:</strong> You can import directly from a migration bundle —
+          select the <code>dam-migration.zip</code> file from Export → Migration
+          and DAM will automatically extract the container config from it.
+        </div>
         <div style="margin-bottom:8px">
           <label class="btn btn-s btn-sm" style="cursor:pointer;display:inline-block">
             📂 Choose File
@@ -619,54 +627,70 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
       <div class="alert ai" x-show="!ld.daemon&&!dmn">Could not load daemon status. <button class="btn btn-s btn-sm" @click="loadDaemon()">↻ Retry</button></div>
       <div x-show="!ld.daemon&&dmn">
 
-        <!-- Status card -->
-        <div class="card" style="margin-bottom:12px">
-          <div class="card-title">ℹ Daemon Status</div>
-          <table class="stbl" style="margin-top:8px">
-            <tr><td class="dim">Installed</td><td>
-              <span x-show="dmn.installed" class="bs bs-running">● installed</span>
-              <span x-show="!dmn.installed" class="bs bs-exited">○ not installed</span>
-            </td></tr>
-            <tr><td class="dim">Method</td><td x-text="dmn.method||'—'"></td></tr>
-            <tr><td class="dim">Schedule</td><td x-text="dmn.schedule||'—'"></td></tr>
-            <tr><td class="dim">Description</td><td x-text="dmn.schedule_description||'—'"></td></tr>
-            <tr><td class="dim">Next run</td><td x-text="dmn.next_run||'—'"></td></tr>
-            <tr><td class="dim">Last run</td><td x-text="dmn.last_run_at||'never'"></td></tr>
-            <tr><td class="dim">Last result</td><td x-text="dmn.last_run_status||'—'"></td></tr>
-            <tr x-show="dmn.last_updated_count!==undefined">
-              <td class="dim">Last updated</td>
-              <td><span x-text="dmn.last_updated_count"></span> containers,
-                  <span x-text="dmn.last_failed_count"></span> failed</td>
-            </tr>
-          </table>
+        <!-- What is this -->
+        <div class="alert ai" style="margin-bottom:12px;font-size:13px;line-height:1.6">
+          ⏱ <strong>The Scheduler runs DAM automatically on a schedule</strong> — it pulls new images and recreates changed containers unattended.<br>
+          On QNAP it installs as a <strong>cron job</strong>. On Linux with systemd it installs as a <strong>systemd timer</strong>.<br>
+          Set your preferred schedule below and click <strong>Install Daemon</strong>.
+          Use <strong>Run Now</strong> to trigger an immediate update at any time.
         </div>
 
-        <!-- Schedule editor -->
+        <!-- Quick setup -->
         <div class="card" style="margin-bottom:12px">
-          <div class="card-title">⚙ Schedule</div>
-          <div class="frow" style="margin-top:8px;max-width:320px">
-            <label class="flbl">Cron expression (minute hour day month weekday)</label>
-            <input type="text" x-model="dmn.edit_schedule" class="finp" placeholder="0 2 * * *">
-          </div>
-          <div style="margin-top:4px;font-size:11px;color:var(--dim)">
-            Examples: <code>0 2 * * *</code> = daily at 2am &nbsp;·&nbsp;
-            <code>0 3 * * 0</code> = weekly Sunday 3am &nbsp;·&nbsp;
-            <code>0 */6 * * *</code> = every 6 hours
+          <div class="card-title">⚙ Schedule &amp; Setup</div>
+          <div style="margin-top:8px;margin-bottom:12px">
+            <label class="flbl">How often should DAM check for updates?</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+              <button class="btn btn-s btn-sm" @click="dmn.edit_schedule='0 2 * * *'">Daily at 2am</button>
+              <button class="btn btn-s btn-sm" @click="dmn.edit_schedule='0 3 * * 0'">Weekly (Sun 3am)</button>
+              <button class="btn btn-s btn-sm" @click="dmn.edit_schedule='0 */6 * * *'">Every 6 hours</button>
+              <button class="btn btn-s btn-sm" @click="dmn.edit_schedule='0 */12 * * *'">Every 12 hours</button>
+            </div>
+            <div class="frow" style="max-width:320px">
+              <label class="flbl">Or enter a custom cron expression:</label>
+              <input type="text" x-model="dmn.edit_schedule" class="finp" placeholder="0 2 * * *">
+            </div>
+            <div style="font-size:11px;color:var(--dim);margin-top:4px">
+              Format: minute hour day month weekday &nbsp;·&nbsp; * = any &nbsp;·&nbsp; */6 = every 6
+            </div>
           </div>
           <div class="alert ad" x-show="dmn.err" x-text="dmn.err" style="margin-top:8px"></div>
           <div class="alert as" x-show="dmn.ok" x-text="dmn.ok" style="margin-top:8px"></div>
-          <div class="flex gap" style="margin-top:12px;flex-wrap:wrap;gap:8px">
+          <div class="flex gap" style="margin-top:12px;flex-wrap:wrap;gap:8px;align-items:center">
             <button class="btn" @click="daemonInstall()" :disabled="ld.daemonact"
-              x-text="dmn.installed ? '↻ Reinstall / Update Schedule' : '+ Install Daemon'">
+              x-text="dmn.installed ? 'Update Schedule' : 'Install Daemon'">
             </button>
             <button class="btn" style="background:var(--red);border-color:var(--red)"
               x-show="dmn&&dmn.installed" @click="daemonRemove()" :disabled="ld.daemonact">
-              ✕ Remove Daemon
+              Remove Daemon
             </button>
-            <button class="btn btn-s" @click="daemonRunNow()" :disabled="ld.daemonrun" style="margin-left:auto">
-              <span x-text="ld.daemonrun ? '⟳ Running...' : '▶ Run Now'"></span>
-            </button>
+            <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+              <span class="dim" style="font-size:12px">Trigger an update right now:</span>
+              <button class="btn" @click="daemonRunNow()" :disabled="ld.daemonrun">
+                <span x-text="ld.daemonrun ? 'Running...' : 'Run Now'"></span>
+              </button>
+            </div>
           </div>
+        </div>
+
+        <!-- Status (shown after install) -->
+        <div class="card" style="margin-bottom:12px" x-show="dmn.installed||dmn.last_run_at">
+          <div class="card-title">Status</div>
+          <table class="stbl" style="margin-top:8px">
+            <tr><td class="dim">Status</td><td>
+              <span x-show="dmn.installed" class="bs bs-running">Active</span>
+              <span x-show="!dmn.installed" class="bs bs-exited">Not installed</span>
+            </td></tr>
+            <tr x-show="dmn.installed"><td class="dim">Method</td><td x-text="dmn.method||'—'"></td></tr>
+            <tr x-show="dmn.installed"><td class="dim">Current schedule</td><td><strong x-text="dmn.schedule"></strong> <span class="dim" x-text="dmn.schedule_description?'('+dmn.schedule_description+')':''"></span></td></tr>
+            <tr x-show="dmn.installed"><td class="dim">Next run</td><td x-text="dmn.next_run||'—'"></td></tr>
+            <tr><td class="dim">Last run</td><td x-text="dmn.last_run_at||'never'"></td></tr>
+            <tr x-show="dmn.last_run_at"><td class="dim">Last result</td><td x-text="dmn.last_run_status||'—'"></td></tr>
+            <tr x-show="dmn.last_updated_count!==undefined">
+              <td class="dim">Last run results</td>
+              <td><span x-text="dmn.last_updated_count||0"></span> updated, <span x-text="dmn.last_failed_count||0"></span> failed</td>
+            </tr>
+          </table>
         </div>
 
         <!-- Run Now results -->
@@ -699,6 +723,10 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
         <button class="btn btn-s btn-sm mla" @click="loadSettings()">↻ Refresh</button>
       </div>
       <div class="card" x-show="ld.settings"><div class="spin"></div> Loading...</div>
+      <div class="alert ai" x-show="!ld.settings&&sett" style="margin-bottom:12px;font-size:13px;line-height:1.6">
+        ⚙ <strong>Settings</strong> — configure DAM behaviour and change your login credentials.
+        Scroll down to <strong>Change Password</strong> to update your username or password.
+      </div>
       <div x-show="!ld.settings&&sett">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
           <div class="card">
@@ -752,18 +780,25 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
             <span x-show="!ld.savesett">💾 Save Settings</span>
           </button>
         </div>
-        <div class="card" style="max-width:420px">
-          <div class="card-title">🔑 Change Password</div>
-          <div style="margin-top:8px">
-            <div class="frow"><label class="flbl">Web UI Username</label><input type="text" x-model="pw.usr" class="finp" :placeholder="sett.web&&sett.web.username||'admin'"></div>
-            <div class="frow"><label class="flbl">Current Password</label><input type="password" x-model="pw.cur" class="finp" placeholder="Current password"></div>
-            <div class="frow"><label class="flbl">New Password</label><input type="password" x-model="pw.new1" class="finp" placeholder="New password (min 6 chars)"></div>
-            <div class="frow"><label class="flbl">Confirm New Password</label><input type="password" x-model="pw.new2" class="finp" placeholder="Confirm new password"></div>
+        <div class="card" style="max-width:480px">
+          <div class="card-title">🔑 Change Username &amp; Password</div>
+          <div class="alert ai" style="margin:8px 0 12px;font-size:12px;line-height:1.5">
+            Current username: <strong x-text="sett&&sett.web&&sett.web.username||'admin'"></strong><br>
+            To change your username, fill in the new username field below.<br>
+            To change only your password, leave the username field blank.<br>
+            You must always provide your <strong>current password</strong> to save changes.<br>
+            <span style="color:var(--dim)">Tip: if you are locked out, use <code>dam --web-passwd</code> on the server to reset.</span>
+          </div>
+          <div style="margin-top:4px">
+            <div class="frow"><label class="flbl">New Username (leave blank to keep current)</label><input type="text" x-model="pw.usr" class="finp" :placeholder="sett&&sett.web&&sett.web.username||'admin'"></div>
+            <div class="frow"><label class="flbl">Current Password <span style="color:var(--red)">*</span></label><input type="password" x-model="pw.cur" class="finp" placeholder="Required to save any change"></div>
+            <div class="frow"><label class="flbl">New Password (leave blank to keep current)</label><input type="password" x-model="pw.new1" class="finp" placeholder="New password (min 6 chars)"></div>
+            <div class="frow"><label class="flbl">Confirm New Password</label><input type="password" x-model="pw.new2" class="finp" placeholder="Repeat new password"></div>
             <div class="alert ad" x-show="pw.err" x-text="pw.err" style="margin:8px 0"></div>
             <div class="alert as" x-show="pw.ok" x-text="pw.ok" style="margin:8px 0"></div>
-            <button class="btn" @click="changePwd()" :disabled="ld.pw||!pw.cur||!pw.new1||!pw.new2" style="margin-top:4px;width:100%">
+            <button class="btn" @click="changePwd()" :disabled="ld.pw||!pw.cur" style="margin-top:4px;width:100%">
               <span x-show="ld.pw">⟳ Saving...</span>
-              <span x-show="!ld.pw">💾 Update Password</span>
+              <span x-show="!ld.pw">💾 Save Changes</span>
             </button>
           </div>
         </div>
@@ -779,7 +814,7 @@ auth:false,lf:{u:'',p:''},le:'',ll:false,
 pg:'dash',ver:'',plat:'',dark:true,q:'',ar:false,_art:null,
 cs:[],ld:{},
 eolR:[],eolS:{},eolW:0,
-drift:{},snaps:[],snapD:null,snapMsg:'',snapErr:false,driftResetOk:'',imp:{yaml:'',preview:null,results:null,err:'',overwrite:false,filename:''},pw:{cur:'',usr:'',new1:'',new2:'',err:'',ok:''},sett:null,dmn:null,
+drift:{},snaps:[],snapD:null,snapMsg:'',snapErr:false,driftResetOk:'',snapUTC:false,imp:{yaml:'',preview:null,results:null,err:'',overwrite:false,filename:''},pw:{cur:'',usr:'',new1:'',new2:'',err:'',ok:''},sett:null,dmn:null,
 us:1,sel:[],drr:[],drs:{},ulog:[],usum:{},sid:null,
 pc:null,pr:null,
 expSel:[],expFmt:'dam-yaml',
@@ -911,12 +946,21 @@ async impRun(live){
 },
 async changePwd(){
   this.pw.err='';this.pw.ok='';
-  if(this.pw.new1!==this.pw.new2){this.pw.err='New passwords do not match';return;}
-  if(this.pw.new1.length<6){this.pw.err='Password must be at least 6 characters';return;}
+  if(!this.pw.cur){this.pw.err='Current password is required';return;}
+  if(this.pw.new1&&this.pw.new1!==this.pw.new2){this.pw.err='New passwords do not match';return;}
+  if(this.pw.new1&&this.pw.new1.length<6){this.pw.err='New password must be at least 6 characters';return;}
+  if(!this.pw.new1&&!this.pw.usr){this.pw.err='Enter a new username or new password (or both)';return;}
   this.ld.pw=true;
+  const payload={current_password:this.pw.cur};
+  if(this.pw.new1)payload.new_password=this.pw.new1;
+  if(this.pw.usr)payload.username=this.pw.usr;
   try{
-    const d=await this.api('/api/auth/change-password',{method:'POST',body:JSON.stringify({current_password:this.pw.cur,new_password:this.pw.new1,username:this.pw.usr||undefined})});
-    if(d&&d.ok){this.pw.ok='Password updated successfully';this.pw.cur='';this.pw.new1='';this.pw.new2='';}
+    const d=await this.api('/api/auth/change-password',{method:'POST',body:JSON.stringify(payload)});
+    if(d&&d.ok){
+      this.pw.ok='\u2713 Changes saved successfully';
+      this.pw.cur='';this.pw.new1='';this.pw.new2='';this.pw.usr='';
+      await this.loadSettings();
+    }else{this.pw.err=(d&&d.detail)||'Save failed';}
   }catch(e){this.pw.err=e.message;}
   finally{this.ld.pw=false;}
 },
@@ -928,6 +972,22 @@ async driftResetBaseline(){
     else{this.driftResetOk='\u2717 Failed: '+(d&&d.detail||'unknown');}
   }catch(e){this.driftResetOk='\u2717 Error: '+e.message;}
   finally{this.ld.driftReset=false;}
+},
+fmtSnapTime(filename){
+  // Convert "2026-04-07_02-12-26_label.yaml" to local time
+  if(!filename)return filename;
+  const m=filename.match(/^(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})/);
+  if(!m)return filename;
+  const d=new Date(Date.UTC(+m[1],+m[2]-1,+m[3],+m[4],+m[5],+m[6]));
+  const local=d.toLocaleString();
+  return filename.replace(m[0],local.replace(/[/:]/g,'-').replace(/,/,''));
+},
+fmtSnapTimeDetail(ts){
+  if(!ts)return ts;
+  // ts like "2026-04-07 02:12:26 UTC"
+  const clean=ts.replace(' UTC','');
+  const d=new Date(clean.replace(' ','T')+'Z');
+  return isNaN(d)?ts:d.toLocaleString()+' (local)';
 },
 async takeSnap(){
   this.ld.snap=true;this.snapMsg='';this.snapErr=false;
