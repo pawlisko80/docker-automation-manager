@@ -918,9 +918,9 @@ async def update_settings(req: SettingsUpdateRequest, _=Depends(require_auth)):
 async def daemon_status(_=Depends(require_auth)):
     """Return current daemon installation status."""
     try:
-        from dam.daemon.service import DaemonService
+        from dam.daemon.service import DaemonManager as DaemonService
         schedule = _settings.get("daemon", {}).get("schedule", "0 2 * * *")
-        svc = DaemonService(_platform, schedule=schedule, settings=_settings)
+        svc = DaemonService(_platform, schedule=schedule)
         return svc.status()
     except Exception as e:
         schedule = _settings.get("daemon", {}).get("schedule", "0 2 * * *")
@@ -935,7 +935,7 @@ class DaemonInstallRequest(BaseModel):
 async def daemon_install(req: DaemonInstallRequest, _=Depends(require_auth)):
     """Install DAM daemon (cron or systemd)."""
     try:
-        from dam.daemon.service import DaemonService
+        from dam.daemon.service import DaemonManager as DaemonService
         schedule = req.schedule or _settings.get("daemon", {}).get("schedule", "0 2 * * *")
         # Save schedule to settings
         if "daemon" not in _settings:
@@ -945,7 +945,7 @@ async def daemon_install(req: DaemonInstallRequest, _=Depends(require_auth)):
         save_settings = {k: v for k, v in _settings.items() if not k.startswith("_")}
         cfg_path.parent.mkdir(parents=True, exist_ok=True)
         cfg_path.write_text(yaml.dump(save_settings, default_flow_style=False))
-        svc = DaemonService(_platform, schedule=schedule, settings=_settings)
+        svc = DaemonService(_platform, schedule=schedule)
         result = svc.install()
         return result
     except Exception as e:
@@ -956,9 +956,9 @@ async def daemon_install(req: DaemonInstallRequest, _=Depends(require_auth)):
 async def daemon_remove(_=Depends(require_auth)):
     """Remove DAM daemon."""
     try:
-        from dam.daemon.service import DaemonService
+        from dam.daemon.service import DaemonManager as DaemonService
         schedule = _settings.get("daemon", {}).get("schedule", "0 2 * * *")
-        svc = DaemonService(_platform, schedule=schedule, settings=_settings)
+        svc = DaemonService(_platform, schedule=schedule)
         result = svc.remove()
         return result
     except Exception as e:
