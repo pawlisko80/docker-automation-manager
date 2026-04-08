@@ -109,35 +109,35 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
   <div class="sidebar">
     <div class="logo"><h1>🐳 DAM</h1><p>v<span x-text="ver"></span></p></div>
     <nav class="nav">
-      <div class="nav-item" :class="{active:pg==='dash'}" @click="go('dash')"><i class="fa fa-gauge"></i> Dashboard</div>
-      <div class="nav-item" :class="{active:pg==='update'}" @click="go('update')"><i class="fa fa-arrows-rotate"></i> Update</div>
-      <div class="nav-item" :class="{active:pg==='drift'}" @click="go('drift')"><i class="fa fa-code-compare"></i> Drift</div>
+      <div class="nav-item" :class="{active:pg==='dash'}" @click="go('dash')">🖥 Dashboard</div>
+      <div class="nav-item" :class="{active:pg==='update'}" @click="go('update')">🔄 Update</div>
+      <div class="nav-item" :class="{active:pg==='drift'}" @click="go('drift')">⚡ Drift</div>
       <div class="nav-item" :class="{active:pg==='eol'}" @click="go('eol')">
-        <i class="fa fa-triangle-exclamation"></i> EOL Check
+        ⚠ EOL Check
         <span class="nbadge" x-show="eolW>0" x-text="eolW"></span>
       </div>
-      <div class="nav-item" :class="{active:pg==='prune'}" @click="go('prune')"><i class="fa fa-trash-can"></i> Prune</div>
-      <div class="nav-item" :class="{active:pg==='export'}" @click="go('export')"><i class="fa fa-file-export"></i> Export</div>
-      <div class="nav-item" :class="{active:pg==='snaps'}" @click="go('snaps')"><i class="fa fa-camera"></i> Snapshots</div>
-      <div class="nav-item" :class="{active:pg==='import'}" @click="go('import')"><i class="fa fa-file-import"></i> Import</div>
+      <div class="nav-item" :class="{active:pg==='prune'}" @click="go('prune')">🗑 Prune</div>
+      <div class="nav-item" :class="{active:pg==='export'}" @click="go('export')">📤 Export</div>
+      <div class="nav-item" :class="{active:pg==='snaps'}" @click="go('snaps')">📷 Snapshots</div>
+      <div class="nav-item" :class="{active:pg==='import'}" @click="go('import')">📥 Import</div>
       <div class="nav-sep"></div>
-      <div class="nav-item" :class="{active:pg==='daemon'}" @click="go('daemon')"><i class="fa fa-clock"></i> Scheduler</div>
-      <div class="nav-item" :class="{active:pg==='settings'}" @click="go('settings')"><i class="fa fa-gear"></i> Settings</div>
+      <div class="nav-item" :class="{active:pg==='daemon'}" @click="go('daemon')">⏱ Scheduler</div>
+      <div class="nav-item" :class="{active:pg==='settings'}" @click="go('settings')">⚙ Settings</div>
     </nav>
     <div class="sidebar-footer">
       <div class="platform-tag" x-text="'Platform: '+plat"></div>
       <div x-show="dv.upd" class="upd-badge avail mt8" @click="go('selfupd')" title="Update available">
-        <i class="fa fa-download"></i> v<span x-text="dv.latest"></span> available
+        ↑ v<span x-text="dv.latest"></span> available
       </div>
       <div x-show="dv.latest&&!dv.upd&&!dv.err" class="upd-badge ok mt8">
-        <i class="fa fa-check"></i> DAM up to date
+        ✓ DAM up to date
       </div>
       <div class="flex gap mt8" style="align-items:center">
         <button class="btn btn-s btn-sm" @click="dark=!dark;sp()" style="flex:1">
           <i :class="dark?'fa fa-sun':'fa fa-moon'"></i>
           <span x-text="dark?'Light':'Dark'"></span>
         </button>
-        <button class="btn btn-s btn-sm" @click="logout()"><i class="fa fa-right-from-bracket"></i></button>
+        <button class="btn btn-s btn-sm" @click="logout()">⏏</button>
       </div>
     </div>
   </div>
@@ -156,7 +156,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
           <label style="margin:0;color:var(--dim);font-size:12px">
             <input type="checkbox" x-model="ar" @change="togAR()"> Auto-refresh
           </label>
-          <button class="btn btn-s btn-sm" @click="loadC()"><i class="fa fa-refresh"></i> Refresh</button>
+          <button class="btn btn-s btn-sm" @click="loadC()">↻ Refresh</button>
         </div>
       </div>
       <div class="stats" x-show="cs.length>0">
@@ -166,7 +166,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
         <div class="stat yellow"><div class="stat-val" x-text="eolW"></div><div class="stat-label">EOL Warnings</div></div>
       </div>
       <div class="sb" x-show="cs.length>0">
-        <i class="fa fa-search"></i>
+        🔍
         <input type="search" x-model="q" placeholder="Search containers, images, IPs, tags, ports...">
       </div>
       <div class="card" x-show="ld.cs"><div class="spin"></div> Loading...</div>
@@ -180,6 +180,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
                 <td>
                   <a x-show="c.custom_link || c.auto_link" :href="c.custom_link || (c.auto_link && c.auto_link.startsWith('__host__') ? 'http://'+window.location.hostname+':'+c.auto_link.split(':')[1] : c.auto_link)" target="_blank" style="font-weight:600" x-text="c.name"></a>
                   <strong x-show="!c.custom_link && !c.auto_link" x-text="c.name"></strong>
+                  <span x-show="c.is_self" style="font-size:10px;background:rgba(79,142,247,.2);color:var(--accent);border-radius:4px;padding:1px 5px;margin-left:4px">DAM</span>
                 </td>
                 <td><span class="mono dim" x-text="c.image" style="font-size:11px"></span></td>
                 <td><span class="bs" :class="'bs-'+c.status" x-text="c.status"></span></td>
@@ -221,12 +222,12 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
     <div class="mov" x-show="lm.open" @click.self="closeLog()">
       <div class="modal">
         <div class="mh">
-          <i class="fa fa-file-lines" style="color:var(--accent)"></i>
+          📋
           <strong x-text="lm.name"></strong>
           <span class="dim" style="font-size:12px">— last <span x-text="lm.tail"></span> lines</span>
           <div class="mla flex gap" style="align-items:center">
             <label style="margin:0;font-size:12px;color:var(--dim)"><input type="checkbox" x-model="lm.follow" @change="reloadLog()"> Live</label>
-            <button class="btn btn-s btn-sm" @click="reloadLog()"><i class="fa fa-refresh"></i></button>
+            <button class="btn btn-s btn-sm" @click="reloadLog()">↻</button>
             <button class="btn btn-s btn-sm" @click="closeLog()">✕</button>
           </div>
         </div>
@@ -258,7 +259,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
         </div>
         <button class="btn btn-p" @click="dryRun()" :disabled="ld.dr||sel.length===0">
           <span x-show="ld.dr" class="spin"></span>
-          <i x-show="!ld.dr" class="fa fa-magnifying-glass"></i> Check for Updates (Dry Run)
+          Check for Updates (Dry Run)
         </button>
       </div>
       <div x-show="us===2">
@@ -278,12 +279,15 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
             </tbody>
           </table>
         </div>
-        <div class="alert aw" x-show="drs.dry_run===0">✓ All images up to date.</div>
+        <div class="alert as" x-show="drs.dry_run===0">✓ All images up to date.</div>
         <div class="alert ai" x-show="drs.dry_run>0"><strong x-text="drs.dry_run"></strong> container(s) have new images.</div>
-        <div class="flex gap">
+        <div class="alert aw" x-show="drr.some(r=>r.container_name==='dam-web'&&r.would_update)" style="margin-top:4px">
+          ⚠ <strong>dam-web</strong> has a new image. Updating it will restart this web UI — your browser will reconnect after ~30s.
+        </div>
+        <div class="flex gap" style="margin-top:8px">
           <button class="btn btn-s" @click="us=1">← Back</button>
           <button class="btn btn-ok" @click="doUpdate()" :disabled="drs.dry_run===0||ld.upd">
-            <i class="fa fa-rocket"></i> Apply Updates
+            Apply Updates
           </button>
         </div>
       </div>
@@ -312,10 +316,10 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
     <div x-show="pg==='drift'">
       <div class="flex gap mb16" style="align-items:center">
         <div class="page-title">Drift Detection</div>
-        <button class="btn btn-s btn-sm mla" @click="loadDrift()"><i class="fa fa-refresh"></i> Refresh</button>
+        <button class="btn btn-s btn-sm mla" @click="loadDrift()">↻ Refresh</button>
       </div>
       <div class="card" x-show="ld.drift"><div class="spin"></div> Analyzing...</div>
-      <div class="alert ai" x-show="!ld.drift&&drift.message"><i class="fa fa-info-circle"></i> <span x-text="drift.message"></span></div>
+      <div class="alert ai" x-show="!ld.drift&&drift.message">ℹ <span x-text="drift.message"></span></div>
       <div class="alert as" x-show="!ld.drift&&!drift.has_drift&&!drift.message">✓ No drift detected (<span x-text="drift.snapshot_label"></span>).</div>
       <div x-show="!ld.drift&&drift.has_drift">
         <div class="stats mb16">
@@ -347,7 +351,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
     <div x-show="pg==='eol'">
       <div class="flex gap mb16" style="align-items:center">
         <div class="page-title">EOL / Deprecation Check</div>
-        <button class="btn btn-s btn-sm mla" @click="loadEol()"><i class="fa fa-refresh"></i> Refresh</button>
+        <button class="btn btn-s btn-sm mla" @click="loadEol()">↻ Refresh</button>
       </div>
       <div class="card" x-show="ld.eol"><div class="spin"></div> Checking...</div>
       <div x-show="!ld.eol&&eolR.length>0">
@@ -387,7 +391,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
         <p class="dim mb16">Preview images to remove before committing.</p>
         <button class="btn btn-s" @click="loadPrune()" :disabled="ld.prune">
           <span x-show="ld.prune" class="spin"></span>
-          <i x-show="!ld.prune" class="fa fa-eye"></i> Preview
+          Preview
         </button>
       </div>
       <div x-show="pc">
@@ -399,7 +403,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
         <div class="flex gap" x-show="pc?.total_candidates>0">
           <button class="btn btn-d" @click="doPrune()" :disabled="ld.prune">
             <span x-show="ld.prune" class="spin"></span>
-            <i x-show="!ld.prune" class="fa fa-trash-can"></i>
+            
             Remove <span x-text="pc?.total_candidates"></span> image(s)
           </button>
           <button class="btn btn-s" @click="pc=null">Cancel</button>
@@ -427,15 +431,15 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
         <div class="card-title">Format</div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
           <div @click="expFmt='dam-yaml'" class="card" style="cursor:pointer;padding:16px;text-align:center" :style="expFmt==='dam-yaml'?'border-color:var(--accent)':''">
-            <i class="fa fa-database fa-lg" style="color:var(--accent);display:block;margin-bottom:8px"></i>
+            🗄
             <div style="font-weight:600">DAM YAML</div><div class="dim" style="font-size:11px;margin-top:4px">Re-import on any host</div>
           </div>
           <div @click="expFmt='docker-run'" class="card" style="cursor:pointer;padding:16px;text-align:center" :style="expFmt==='docker-run'?'border-color:var(--accent)':''">
-            <i class="fa fa-terminal fa-lg" style="color:var(--green);display:block;margin-bottom:8px"></i>
+            💻
             <div style="font-weight:600">Shell Script</div><div class="dim" style="font-size:11px;margin-top:4px">Works without DAM</div>
           </div>
           <div @click="expFmt='compose'" class="card" style="cursor:pointer;padding:16px;text-align:center" :style="expFmt==='compose'?'border-color:var(--accent)':''">
-            <i class="fa fa-layer-group fa-lg" style="color:var(--accent2);display:block;margin-bottom:8px"></i>
+            📦
             <div style="font-weight:600">Compose</div><div class="dim" style="font-size:11px;margin-top:4px">docker-compose.yml</div>
           </div>
         </div>
@@ -450,8 +454,8 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
     <div x-show="pg==='snaps'">
       <div class="flex gap mb16" style="align-items:center">
         <div class="page-title">Snapshots</div>
-        <button class="btn btn-s btn-sm mla" @click="takeSnap()" :disabled="ld.snap"><i class="fa fa-camera"></i> Take Snapshot</button>
-        <button class="btn btn-s btn-sm" @click="loadSnaps()"><i class="fa fa-refresh"></i> Refresh</button>
+        <button class="btn btn-s btn-sm mla" @click="takeSnap()" :disabled="ld.snap">📷 Take Snapshot</button>
+        <button class="btn btn-s btn-sm" @click="loadSnaps()">↻ Refresh</button>
       </div>
       <div class="alert" :class="snapErr?'ad':'as'" x-show="snapMsg" x-text="snapMsg" style="margin-bottom:12px"></div>
       <div class="card" x-show="ld.snaps"><div class="spin"></div> Loading...</div>
@@ -465,7 +469,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
                 <td class="dim" x-text="s.id+1"></td>
                 <td class="mono" x-text="s.filename"></td>
                 <td class="dim" x-text="s.size_kb+' KB'"></td>
-                <td><button class="btn btn-s btn-sm" @click="viewSnap(s.id)"><i class="fa fa-eye"></i> View</button></td>
+                <td><button class="btn btn-s btn-sm" @click="viewSnap(s.id)">👁 View</button></td>
               </tr>
             </template>
           </tbody>
@@ -499,13 +503,13 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
           <div>
             <div style="font-size:16px;font-weight:600">Current: v<span x-text="dv.current"></span></div>
             <div class="dim mt8" x-show="dv.latest">Latest: v<span x-text="dv.latest"></span></div>
-            <div class="alert aw mt8" x-show="dv.upd"><i class="fa fa-arrow-up"></i> v<span x-text="dv.latest"></span> available</div>
+            <div class="alert aw mt8" x-show="dv.upd">↑ v<span x-text="dv.latest"></span> available</div>
             <div class="alert as mt8" x-show="!dv.upd&&dv.latest">✓ Running latest version</div>
-            <div class="alert ai mt8" x-show="dv.err"><i class="fa fa-warning"></i> <span x-text="dv.err"></span></div>
+            <div class="alert ai mt8" x-show="dv.err">⚠ <span x-text="dv.err"></span></div>
           </div>
           <div class="mla flex gap" style="flex-direction:column;align-items:flex-end">
-            <button class="btn btn-s btn-sm" @click="chkDv()"><i class="fa fa-refresh"></i> Check</button>
-            <a x-show="dv.release_url" :href="dv.release_url" target="_blank" class="btn btn-s btn-sm"><i class="fa fa-external-link"></i> Release Notes</a>
+            <button class="btn btn-s btn-sm" @click="chkDv()">↻ Check</button>
+            <a x-show="dv.release_url" :href="dv.release_url" target="_blank" class="btn btn-s btn-sm">↗ Release Notes</a>
           </div>
         </div>
         <div x-show="dv.release_notes&&dv.upd">
@@ -514,7 +518,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
         </div>
       </div>
       <div class="alert aw">
-        <i class="fa fa-triangle-exclamation"></i>
+        ⚠
         <strong> Update replaces DAM source files.</strong>
         Tries git pull first, falls back to GitHub zip download. Restart server after updating.
       </div>
@@ -538,7 +542,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
         <div class="card-title">DAM YAML — paste or load from file</div>
         <div style="margin-bottom:8px">
           <label class="btn btn-s btn-sm" style="cursor:pointer;display:inline-block">
-            <i class="fa fa-folder-open"></i> Choose File
+            📂 Choose File
             <input type="file" accept=".yaml,.yml" style="display:none" @change="impLoadFile($event)">
           </label>
           <span class="dim" style="font-size:12px;margin-left:8px" x-text="imp.filename||'No file chosen'"></span>
@@ -548,9 +552,9 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
           <label style="display:flex;align-items:center;gap:6px;font-size:13px">
             <input type="checkbox" x-model="imp.overwrite"> Overwrite existing containers
           </label>
-          <button class="btn btn-s btn-sm mla" @click="impPreview()" :disabled="ld.imp||!imp.yaml.trim()"><i class="fa fa-eye"></i> Preview</button>
-          <button class="btn btn-sm" @click="impRun(false)" :disabled="ld.imp||!imp.yaml.trim()||!imp.preview"><i class="fa fa-play"></i> Dry Run</button>
-          <button class="btn btn-sm" style="background:var(--green)" @click="impRun(true)" :disabled="ld.imp||!imp.yaml.trim()||!imp.preview"><i class="fa fa-rocket"></i> Import</button>
+          <button class="btn btn-s btn-sm mla" @click="impPreview()" :disabled="ld.imp||!imp.yaml.trim()">👁 Preview</button>
+          <button class="btn btn-sm" @click="impRun(false)" :disabled="ld.imp||!imp.yaml.trim()||!imp.preview">▶ Dry Run</button>
+          <button class="btn btn-sm" style="background:var(--green)" @click="impRun(true)" :disabled="ld.imp||!imp.yaml.trim()||!imp.preview">🚀 Import</button>
         </div>
       </div>
       <div class="card" x-show="ld.imp"><div class="spin"></div> Working...</div>
@@ -597,14 +601,14 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
     <div x-show="pg==='daemon'">
       <div class="flex gap mb16">
         <div class="page-title">Scheduler</div>
-        <button class="btn btn-s btn-sm mla" @click="loadDaemon()"><i class="fa fa-refresh"></i> Refresh</button>
+        <button class="btn btn-s btn-sm mla" @click="loadDaemon()">↻ Refresh</button>
       </div>
       <div class="card" x-show="ld.daemon"><div class="spin"></div> Loading...</div>
       <div x-show="!ld.daemon&&dmn">
 
         <!-- Status card -->
         <div class="card" style="margin-bottom:12px">
-          <div class="card-title"><i class="fa fa-circle-info"></i> Daemon Status</div>
+          <div class="card-title">ℹ Daemon Status</div>
           <table class="stbl" style="margin-top:8px">
             <tr><td class="dim">Installed</td><td>
               <span x-show="dmn.installed" class="bs bs-running">● installed</span>
@@ -626,7 +630,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
 
         <!-- Schedule editor -->
         <div class="card" style="margin-bottom:12px">
-          <div class="card-title"><i class="fa fa-sliders"></i> Schedule</div>
+          <div class="card-title">⚙ Schedule</div>
           <div class="frow" style="margin-top:8px;max-width:320px">
             <label class="flbl">Cron expression (minute hour day month weekday)</label>
             <input type="text" x-model="dmn.edit_schedule" class="finp" placeholder="0 2 * * *">
@@ -640,16 +644,16 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
           <div class="alert as" x-show="dmn.ok" x-text="dmn.ok" style="margin-top:8px"></div>
           <div class="flex gap" style="margin-top:12px;flex-wrap:wrap;gap:8px">
             <button class="btn" @click="daemonInstall()" :disabled="ld.daemonact">
-              <span x-show="dmn.installed"><i class="fa fa-rotate"></i> Reinstall / Update Schedule</span>
-              <span x-show="!dmn.installed"><i class="fa fa-plus"></i> Install Daemon</span>
+              <span x-show="dmn.installed">↻ Reinstall / Update Schedule</span>
+              <span x-show="!dmn.installed">+ Install Daemon</span>
             </button>
             <button class="btn" style="background:var(--red);border-color:var(--red)"
               x-show="dmn.installed" @click="daemonRemove()" :disabled="ld.daemonact">
-              <i class="fa fa-trash"></i> Remove Daemon
+              ✕ Remove Daemon
             </button>
             <button class="btn btn-s" @click="daemonRunNow()" :disabled="ld.daemonrun" style="margin-left:auto">
-              <span x-show="ld.daemonrun"><i class="fa fa-spinner fa-spin"></i> Running...</span>
-              <span x-show="!ld.daemonrun"><i class="fa fa-play"></i> Run Now</span>
+              <span x-show="ld.daemonrun">⟳ Running...</span>
+              <span x-show="!ld.daemonrun">▶ Run Now</span>
             </button>
           </div>
         </div>
@@ -681,13 +685,13 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
     <!-- Settings page -->
     <div x-show="pg==='settings'">
       <div class="flex gap mb16"><div class="page-title">Settings</div>
-        <button class="btn btn-s btn-sm mla" @click="loadSettings()"><i class="fa fa-refresh"></i> Refresh</button>
+        <button class="btn btn-s btn-sm mla" @click="loadSettings()">↻ Refresh</button>
       </div>
       <div class="card" x-show="ld.settings"><div class="spin"></div> Loading...</div>
       <div x-show="!ld.settings&&sett">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
           <div class="card">
-            <div class="card-title"><i class="fa fa-server"></i> Platform</div>
+            <div class="card-title">🖥 Platform</div>
             <table class="stbl">
               <tr><td class="dim">Platform</td><td x-text="sett.platform&&sett.platform.platform||'—'"></td></tr>
               <tr><td class="dim">Data root</td><td class="mono" style="font-size:11px" x-text="sett.platform&&sett.platform.data_root||'—'"></td></tr>
@@ -697,7 +701,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
             </table>
           </div>
           <div class="card">
-            <div class="card-title"><i class="fa fa-brands fa-docker"></i> Docker</div>
+            <div class="card-title">🐳 Docker</div>
             <table class="stbl">
               <tr><td class="dim">Engine</td><td x-text="sett.docker&&sett.docker.version||'—'"></td></tr>
               <tr><td class="dim">API version</td><td x-text="sett.docker&&sett.docker.api_version||'—'"></td></tr>
@@ -707,7 +711,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
           </div>
         </div>
         <div class="card" style="margin-bottom:12px">
-          <div class="card-title"><i class="fa fa-sliders"></i> DAM Configuration</div>
+          <div class="card-title">⚙ DAM Configuration</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:8px">
             <div class="frow">
               <label class="flbl">Snapshot retention (count)</label>
@@ -733,12 +737,12 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
           <div class="alert ad" x-show="sett.err" x-text="sett.err" style="margin-top:10px"></div>
           <div class="alert as" x-show="sett.savedok" x-text="sett.savedok" style="margin-top:10px"></div>
           <button class="btn" @click="saveSettings()" :disabled="ld.savesett" style="margin-top:12px">
-            <span x-show="ld.savesett"><i class="fa fa-spinner fa-spin"></i> Saving...</span>
-            <span x-show="!ld.savesett"><i class="fa fa-save"></i> Save Settings</span>
+            <span x-show="ld.savesett">⟳ Saving...</span>
+            <span x-show="!ld.savesett">💾 Save Settings</span>
           </button>
         </div>
         <div class="card" style="max-width:420px">
-          <div class="card-title"><i class="fa fa-key"></i> Change Password</div>
+          <div class="card-title">🔑 Change Password</div>
           <div style="margin-top:8px">
             <div class="frow"><label class="flbl">Web UI Username</label><input type="text" x-model="pw.usr" class="finp" :placeholder="sett.web&&sett.web.username||'admin'"></div>
             <div class="frow"><label class="flbl">Current Password</label><input type="password" x-model="pw.cur" class="finp" placeholder="Current password"></div>
@@ -747,8 +751,8 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
             <div class="alert ad" x-show="pw.err" x-text="pw.err" style="margin:8px 0"></div>
             <div class="alert as" x-show="pw.ok" x-text="pw.ok" style="margin:8px 0"></div>
             <button class="btn" @click="changePwd()" :disabled="ld.pw||!pw.cur||!pw.new1||!pw.new2" style="margin-top:4px;width:100%">
-              <span x-show="ld.pw"><i class="fa fa-spinner fa-spin"></i> Saving...</span>
-              <span x-show="!ld.pw"><i class="fa fa-save"></i> Update Password</span>
+              <span x-show="ld.pw">⟳ Saving...</span>
+              <span x-show="!ld.pw">💾 Update Password</span>
             </button>
           </div>
         </div>

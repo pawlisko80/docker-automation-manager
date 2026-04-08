@@ -81,6 +81,23 @@ async def startup():
     except FileNotFoundError:
         _settings = {}
     _settings["_config_path"] = str(cfg_path)
+    # Detect own container name for self-exclusion
+    try:
+        import socket
+        _settings["_own_hostname"] = socket.gethostname()
+        # Try to get actual container name from Docker SDK
+        try:
+            import docker as _docker
+            _cli = _docker.from_env()
+            _own_id = socket.gethostname()
+            for _c in _cli.containers.list():
+                if _c.short_id == _own_id[:12] or _c.id.startswith(_own_id):
+                    _settings["_own_container_name"] = _c.name
+                    break
+        except Exception:
+            pass
+    except Exception:
+        pass
     global _sessions_file
     _sessions_file = cfg_path.parent / ".sessions"
     _load_sessions()
@@ -218,9 +235,16 @@ def _cfg_to_dict(cfg: ContainerConfig) -> dict:
         https = port in ("443", "8443", "9443")
         scheme = "https" if https else "http"
         return f"{scheme}://{host}:{port}"
+    own_name = _settings.get("_own_container_name", "")
+    own_host = _settings.get("_own_hostname", "")
+    is_self = bool(
+        (own_name and cfg.name == own_name) or
+        (own_host and cfg.name and own_host.lower().startswith(cfg.name[:8].lower()))
+    )
     return {"name": cfg.name,
             "image": cfg.image,
             "image_id": cfg.image_id[:19] if cfg.image_id else "",
+            "is_self": is_self,
             "status": cfg.status,
             "restart_policy": cfg.restart_policy,
             "network_mode": cfg.network_mode,
