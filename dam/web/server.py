@@ -793,35 +793,6 @@ class CloneRequest(BaseModel):
     dry_run: bool = False
 
 
-@app.get("/api/images/debug")
-async def debug_images(_=Depends(require_auth)):
-    """Debug: show raw container/image ID data for troubleshooting."""
-    try:
-        import docker as _docker
-        client = _docker.from_env()
-        containers = []
-        for c in client.containers.list(all=True):
-            try:
-                attrs = c.attrs
-                containers.append({
-                    "name": c.name,
-                    "image_id": attrs.get("Image", "")[:20],
-                    "config_image": attrs.get("Config", {}).get("Image", ""),
-                    "c_image_id": c.image.id[:20] if c.image else "none",
-                })
-            except Exception as e:
-                containers.append({"name": c.name, "error": str(e)})
-        imgs = []
-        for img in client.images.list(all=False):
-            imgs.append({
-                "id": img.id[:20],
-                "tags": img.tags,
-            })
-        return {"containers": containers, "images": imgs}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 @app.get("/api/images")
 async def list_images(_=Depends(require_auth)):
     """List all Docker images."""
@@ -855,6 +826,16 @@ async def list_images(_=Depends(require_auth)):
             except Exception:
                 pass
 
+        # Map image ID -> container names that use it
+        id_to_containers = {}
+        for c in containers:
+            try:
+                cid = c.attrs.get("Image", "")
+                if cid:
+                    id_to_containers.setdefault(cid, []).append(c.name)
+            except Exception:
+                pass
+
         images = []
         for img in client.images.list(all=False):
             tags = img.tags or ["<none>:<none>"]
@@ -870,6 +851,20 @@ async def list_images(_=Depends(require_auth)):
                 or any(t in in_use_tags for t in tags if t != "<none>:<none>")
             )
 
+            # Which containers use this image
+            used_by = id_to_containers.get(img.id, [])
+
+            # Stale: image has a tag but a container runs on a different (older) version
+            # i.e. container Config.Image matches our tag but container's actual image ID differs
+            stale = False
+            if not dangling and not in_use:
+                for tag in tags:
+                    norm = tag if ":" in tag.split("/")[-1] else tag + ":latest"
+                    if norm in in_use_tags or tag in in_use_tags:
+                        # Container was created with this tag name but runs on different ID
+                        stale = True
+                        break
+
             images.append({
                 "id": short_id,
                 "full_id": img.id,
@@ -878,8 +873,10 @@ async def list_images(_=Depends(require_auth)):
                 "created": created,
                 "in_use": in_use,
                 "dangling": dangling,
+                "stale": stale,
+                "used_by": used_by,
             })
-        images.sort(key=lambda x: (not x["in_use"], x["dangling"], x["tags"][0]))
+        images.sort(key=lambda x: (not x["in_use"], x["dangling"], x["stale"], x["tags"][0]))
         return {"images": images}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

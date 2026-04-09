@@ -703,6 +703,10 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
       </div>
 
       <!-- Image list -->
+      <div class="alert ai" style="margin-bottom:8px;font-size:12px;line-height:1.6" x-show="Array.isArray(imgs)&&imgs.some(i=>i.dangling&&!i.in_use)">
+        ℹ <strong>Old version</strong> images are previous versions of a running container's image — the container was updated (new image pulled) but not yet recreated.
+        They will be freed automatically when you run an update, or you can remove them safely now if the container is working correctly on the new version.
+      </div>
       <div class="card" x-show="ld.imgs"><div class="spin"></div> Loading...</div>
       <div x-show="!ld.imgs">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -736,14 +740,24 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
                   <td class="dim" x-text="img.size_mb+' MB'"></td>
                   <td class="dim" style="font-size:11px" x-text="img.created"></td>
                   <td>
-                    <span x-show="img.in_use" class="bs bs-running">in use</span>
-                    <span x-show="!img.in_use&&!img.dangling" class="bs bs-exited">unused</span>
-                    <span x-show="img.dangling&&!img.in_use" class="bs bs-paused" title="Dangling image — not tagged, safe to remove">dangling</span>
+                    <span x-show="img.in_use" class="bs bs-running"
+                      :title="img.used_by&&img.used_by.length?'Used by: '+img.used_by.join(', '):'in use'">
+                      in use<span x-show="img.used_by&&img.used_by.length" x-text="'  ('+img.used_by.join(', ')+')'"></span>
+                    </span>
+                    <span x-show="!img.in_use&&!img.dangling&&!img.stale" class="bs bs-exited">unused</span>
+                    <span x-show="img.dangling&&!img.in_use" class="bs bs-paused"
+                      title="Dangling — container running on older version of this image. Safe to remove after recreating containers.">
+                      old version
+                    </span>
+                    <span x-show="img.stale&&!img.dangling&&!img.in_use" class="bs bs-paused"
+                      title="A container was created with this tag name but is running on a newer pulled version. Container needs to be recreated to use this image.">
+                      pending
+                    </span>
                   </td>
                   <td>
                     <button class="bti" style="color:var(--red)" @click="doDeleteImage(img)"
                       :disabled="img.in_use===true"
-                      :title="img.in_use?'Cannot remove — image in use by a container':'Remove image'">
+                      :title="img.in_use?'Cannot remove — in use by: '+(img.used_by||[]).join(', '):'Remove image'">
                       Remove
                     </button>
                   </td>
