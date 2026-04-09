@@ -799,25 +799,47 @@ async def list_images(_=Depends(require_auth)):
     try:
         import docker as _docker
         client = _docker.from_env()
+
+        # Build set of full image IDs in use by any container (running or stopped)
+        in_use_full_ids = set()
+        for c in client.containers.list(all=True):
+            try:
+                # Use full 64-char image ID for reliable matching
+                in_use_full_ids.add(c.image.id)
+            except Exception:
+                pass
+
         images = []
-        for img in client.images.list():
+        for img in client.images.list(all=False):
             tags = img.tags or ["<none>:<none>"]
             size_mb = round(img.attrs.get("Size", 0) / 1024 / 1024, 1)
             created = img.attrs.get("Created", "")[:19].replace("T", " ")
+            # Match by full image ID
+            in_use = img.id in in_use_full_ids
+            # Also check if any container references this image by tag
+            if not in_use:
+                for tag in tags:
+                    for c in client.containers.list(all=True):
+                        try:
+                            if c.attrs.get("Config", {}).get("Image", "") == tag:
+                                in_use = True
+                                break
+                        except Exception:
+                            pass
+                    if in_use:
+                        break
+            short_id = img.id.replace("sha256:", "")[:12]
+            dangling = not img.tags  # <none>:<none> images
             images.append({
-                "id": img.short_id.replace("sha256:", ""),
+                "id": short_id,
+                "full_id": img.id,
                 "tags": tags,
                 "size_mb": size_mb,
                 "created": created,
-                "in_use": False,  # updated below
+                "in_use": in_use,
+                "dangling": dangling,
             })
-        # Mark images in use by running containers
-        in_use_ids = set()
-        for c in client.containers.list(all=True):
-            in_use_ids.add(c.image.short_id.replace("sha256:", ""))
-        for img in images:
-            img["in_use"] = img["id"] in in_use_ids
-        images.sort(key=lambda x: (not x["in_use"], x["tags"][0]))
+        images.sort(key=lambda x: (not x["in_use"], x["dangling"], x["tags"][0]))
         return {"images": images}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -991,7 +1013,8 @@ async def export_containers(req: ExportRequest, _=Depends(require_auth)):
 
 
 class ImportRequest(BaseModel):
-    yaml_content: str
+    yaml_content: Optional[str] = None
+    edited_containers: Optional[list] = None  # edited preview from web UI
     dry_run: bool = True
     overwrite: bool = False
 
@@ -1009,21 +1032,33 @@ async def import_preview(req: ImportRequest, _=Depends(require_auth)):
             meta, configs = load_import_file(tmp)
         finally:
             tmp.unlink(missing_ok=True)
-        return {"ok": True, "meta": meta, "containers": [
-            {"name": c.name, "image": c.image, "network_mode": c.network_mode,
-             "ip": c.primary_ip(), "restart_policy": c.restart_policy}
-            for c in configs
-        ]}
+
+        def _c_to_dict(c):
+            return {
+                "name": c.name,
+                "image": c.image,
+                "network_mode": c.network_mode,
+                "ip": c.primary_ip(),
+                "restart_policy": c.restart_policy,
+                "ports": [f"{p.host_port}:{p.container_port}" for p in (c.ports or [])],
+                "env": dict(c.env or {}),
+            }
+        return {"ok": True, "meta": meta, "containers": [_c_to_dict(c) for c in configs]}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.post("/api/import/run")
 async def import_run(req: ImportRequest, _=Depends(require_auth)):
-    """Actually recreate containers from YAML."""
+    """Actually recreate containers from YAML, with optional edits applied."""
     try:
         import tempfile
+        import copy
         from dam.core.importer import load_import_file, Importer
+
+        # Load base configs from YAML
+        if not req.yaml_content:
+            raise HTTPException(status_code=400, detail="yaml_content is required")
         with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
             f.write(req.yaml_content)
             tmp = Path(f.name)
@@ -1031,6 +1066,51 @@ async def import_run(req: ImportRequest, _=Depends(require_auth)):
             meta, configs = load_import_file(tmp)
         finally:
             tmp.unlink(missing_ok=True)
+
+        # Apply edits from the web UI preview editor
+        if req.edited_containers:
+            edited_map = {e["name"]: e for e in req.edited_containers
+                          if isinstance(e, dict) and e.get("name")}
+            # Also map by original name in case name was changed
+            for i, cfg in enumerate(configs):
+                # Match by position if name changed, else by name
+                edit = edited_map.get(cfg.name)
+                if edit is None and i < len(req.edited_containers):
+                    edit = req.edited_containers[i]
+                if not edit:
+                    continue
+                cfg = copy.deepcopy(cfg)
+                if edit.get("name"):
+                    cfg.name = edit["name"]
+                if edit.get("image"):
+                    cfg.image = edit["image"]
+                if edit.get("restart_policy"):
+                    cfg.restart_policy = edit["restart_policy"]
+                if edit.get("network_mode"):
+                    cfg.network_mode = edit["network_mode"]
+                # Apply new IP to static networks
+                if edit.get("ip") and cfg.networks:
+                    for net in cfg.networks:
+                        if net.is_static:
+                            net.ip_address = edit["ip"]
+                # Apply env overrides
+                if edit.get("env") and isinstance(edit["env"], dict):
+                    cfg.env = edit["env"]
+                # Apply port overrides
+                if edit.get("ports") and isinstance(edit["ports"], list):
+                    from dam.core.inspector import PortBinding
+                    new_ports = []
+                    for p in edit["ports"]:
+                        if p and ":" in p:
+                            parts = p.split(":")
+                            new_ports.append(PortBinding(
+                                host_port=parts[0],
+                                container_port=parts[1] + "/tcp",
+                                host_ip="0.0.0.0"
+                            ))
+                    cfg.ports = new_ports
+                configs[i] = cfg
+
         importer = Importer(_platform, dry_run=req.dry_run, overwrite=req.overwrite)
         results = importer.import_configs(configs)
         summary = Importer.summarize(results)
@@ -1039,6 +1119,8 @@ async def import_run(req: ImportRequest, _=Depends(require_auth)):
              "image": r.image, "error": r.error}
             for r in results
         ], "summary": summary}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

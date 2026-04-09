@@ -596,21 +596,71 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
       <div class="alert ad" x-show="imp.err" x-text="imp.err"></div>
       <div x-show="imp.preview&&!ld.imp">
         <div class="card" style="margin-bottom:12px">
-          <div class="card-title">Preview — <span x-text="imp.preview.length"></span> container(s)</div>
-          <table>
-            <thead><tr><th>Container</th><th>Image</th><th>Network</th><th>IP</th><th>Restart</th></tr></thead>
-            <tbody>
-              <template x-for="c in imp.preview" :key="c.name">
-                <tr>
-                  <td><strong x-text="c.name"></strong></td>
-                  <td class="mono dim" style="font-size:11px" x-text="c.image"></td>
-                  <td x-text="c.network_mode"></td>
-                  <td x-text="c.ip||'—'"></td>
-                  <td x-text="c.restart_policy"></td>
-                </tr>
-              </template>
-            </tbody>
-          </table>
+          <div class="card-title">
+            Edit before import — <span x-text="imp.preview.length"></span> container(s)
+            <span class="dim" style="font-size:11px;font-weight:normal;margin-left:8px">Change names, IPs, networks, or ports to match your environment</span>
+          </div>
+          <template x-for="(c,ci) in imp.preview" :key="ci">
+            <div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-top:10px">
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px">
+                <div class="frow">
+                  <label class="flbl">Container name</label>
+                  <input type="text" x-model="imp.preview[ci].name" class="finp" style="font-size:12px">
+                </div>
+                <div class="frow">
+                  <label class="flbl">Image</label>
+                  <input type="text" x-model="imp.preview[ci].image" class="finp" style="font-size:12px">
+                </div>
+                <div class="frow">
+                  <label class="flbl">Restart policy</label>
+                  <select x-model="imp.preview[ci].restart_policy" class="finp" style="font-size:12px">
+                    <option value="unless-stopped">unless-stopped</option>
+                    <option value="always">always</option>
+                    <option value="on-failure">on-failure</option>
+                    <option value="no">no</option>
+                  </select>
+                </div>
+                <div class="frow">
+                  <label class="flbl">Network</label>
+                  <input type="text" x-model="imp.preview[ci].network_mode" class="finp" style="font-size:12px" placeholder="bridge / macvlan_network / host">
+                </div>
+                <div class="frow">
+                  <label class="flbl">Static IP (macvlan/qnet only)</label>
+                  <input type="text" x-model="imp.preview[ci].ip" class="finp" style="font-size:12px" placeholder="e.g. 192.168.1.50">
+                </div>
+              </div>
+              <!-- Ports -->
+              <div x-show="c.ports&&c.ports.length>0" style="margin-bottom:6px">
+                <div class="flbl" style="margin-bottom:4px">Port mappings</div>
+                <template x-for="(p,pi) in (imp.preview[ci].ports||[])" :key="pi">
+                  <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">
+                    <input type="text" :value="p" @input="imp.preview[ci].ports[pi]=$event.target.value"
+                      class="finp" style="font-size:11px;max-width:200px" placeholder="8080:80">
+                    <button class="bti" style="color:var(--red);font-size:11px" @click="imp.preview[ci].ports.splice(pi,1)">✕</button>
+                  </div>
+                </template>
+                <button class="btn btn-s btn-sm" style="font-size:11px" @click="imp.preview[ci].ports=(imp.preview[ci].ports||[]).concat([''])">+ Add port</button>
+              </div>
+              <!-- Env vars (shown collapsed, expand on click) -->
+              <div x-show="c.env&&Object.keys(c.env||{}).length>0">
+                <details>
+                  <summary class="flbl" style="cursor:pointer">
+                    Environment variables (<span x-text="Object.keys(imp.preview[ci].env||{}).length"></span>)
+                  </summary>
+                  <div style="margin-top:6px">
+                    <template x-for="(val,key) in (imp.preview[ci].env||{})" :key="key">
+                      <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">
+                        <span class="mono" style="font-size:11px;color:var(--dim);min-width:140px" x-text="key"></span>
+                        <input type="text" :value="val"
+                          @input="imp.preview[ci].env[key]=$event.target.value"
+                          class="finp" style="font-size:11px;flex:1">
+                      </div>
+                    </template>
+                  </div>
+                </details>
+              </div>
+            </div>
+          </template>
         </div>
       </div>
       <div x-show="imp.results&&!ld.imp">
@@ -655,10 +705,18 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
       <!-- Image list -->
       <div class="card" x-show="ld.imgs"><div class="spin"></div> Loading...</div>
       <div x-show="!ld.imgs">
-        <div class="dim" style="font-size:12px;margin-bottom:8px">
-          <span x-text="imgs.filter?imgs.filter(i=>i.in_use).length:0"></span> in use ·
-          <span x-text="imgs.filter?imgs.filter(i=>!i.in_use).length:0"></span> unused ·
-          <span x-text="imgs.filter?imgs.reduce((a,i)=>a+i.size_mb,0).toFixed(0):0"></span> MB total
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div class="dim" style="font-size:12px">
+            <span x-text="Array.isArray(imgs)?imgs.filter(i=>i.in_use).length:0"></span> in use ·
+            <span x-text="Array.isArray(imgs)?imgs.filter(i=>!i.in_use&&!i.dangling).length:0"></span> unused ·
+            <span x-text="Array.isArray(imgs)?imgs.filter(i=>i.dangling&&!i.in_use).length:0"></span> dangling ·
+            <span x-text="Array.isArray(imgs)?imgs.reduce((a,i)=>a+i.size_mb,0).toFixed(0):0"></span> MB total
+          </div>
+          <button class="btn btn-s btn-sm" style="color:var(--red);border-color:var(--red)"
+            x-show="Array.isArray(imgs)&&imgs.some(i=>i.dangling&&!i.in_use)"
+            @click="removeDangling()">
+            Remove all dangling
+          </button>
         </div>
         <div class="card" style="padding:0;overflow:hidden">
           <table>
@@ -679,11 +737,13 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
                   <td class="dim" style="font-size:11px" x-text="img.created"></td>
                   <td>
                     <span x-show="img.in_use" class="bs bs-running">in use</span>
-                    <span x-show="!img.in_use" class="bs bs-exited">unused</span>
+                    <span x-show="!img.in_use&&!img.dangling" class="bs bs-exited">unused</span>
+                    <span x-show="img.dangling&&!img.in_use" class="bs bs-paused" title="Dangling image — not tagged, safe to remove">dangling</span>
                   </td>
                   <td>
                     <button class="bti" style="color:var(--red)" @click="doDeleteImage(img)"
-                      :disabled="img.in_use" :title="img.in_use?'Cannot remove — image in use':'Remove image'">
+                      :disabled="img.in_use===true"
+                      :title="img.in_use?'Cannot remove — image in use by a container':'Remove image'">
                       Remove
                     </button>
                   </td>
@@ -1166,7 +1226,13 @@ async impPreview(){
 async impRun(live){
   this.ld.imp=true;this.imp.err='';this.imp.results=null;
   try{
-    const d=await this.api('/api/import/run',{method:'POST',body:JSON.stringify({yaml_content:this.imp.yaml,dry_run:!live,overwrite:this.imp.overwrite})});
+    // Send edited containers if available, otherwise fall back to raw yaml
+    const payload={dry_run:!live,overwrite:this.imp.overwrite};
+    payload.yaml_content=this.imp.yaml;
+    if(this.imp.preview&&this.imp.preview.length>0){
+      payload.edited_containers=this.imp.preview;
+    }
+    const d=await this.api('/api/import/run',{method:'POST',body:JSON.stringify(payload)});
     if(d){this.imp.results=d.results;}
   }catch(e){this.imp.err=e.message;}
   finally{this.ld.imp=false;}
@@ -1377,6 +1443,22 @@ async loadImages(){
   }catch(e){this.imgs=[];}
   finally{this.ld.imgs=false;}
 },
+async removeDangling(){
+  const dangling=(Array.isArray(this.imgs)?this.imgs:[]).filter(i=>i.dangling&&!i.in_use);
+  if(!dangling.length){return;}
+  if(!confirm('Remove '+dangling.length+' dangling image(s)? This frees up disk space.'))return;
+  this.ld.imgdel=true;
+  let removed=0,failed=0;
+  for(const img of dangling){
+    try{
+      const d=await this.api('/api/images/'+encodeURIComponent(img.full_id||img.id),{method:'DELETE'});
+      if(d&&d.ok)removed++;else failed++;
+    }catch(e){failed++;}
+  }
+  await this.loadImages();
+  this.ld.imgdel=false;
+  if(failed>0)alert(removed+' removed, '+failed+' failed');
+},
 async doPullImage(){
   if(!this.imgPull.trim())return;
   this.ld.imgpull=true;
@@ -1397,7 +1479,7 @@ async doDeleteImage(img){
   if(!confirm('Remove image '+img.tags[0]+'?'))return;
   this.ld.imgdel=true;
   try{
-    const d=await this.api('/api/images/'+encodeURIComponent(img.id),{method:'DELETE'});
+    const d=await this.api('/api/images/'+encodeURIComponent(img.full_id||img.id),{method:'DELETE'});
     if(d&&d.ok)await this.loadImages();
     else alert('Remove failed: '+(d&&d.detail||'unknown'));
   }catch(e){alert(e.message);}
