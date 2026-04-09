@@ -119,11 +119,11 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
       <div class="nav-item" :class="{active:pg==='prune'}" @click="go('prune')">🗑 Prune</div>
       <div class="nav-item" :class="{active:pg==='export'}" @click="go('export')">📤 Export</div>
       <div class="nav-item" :class="{active:pg==='snaps'}" @click="go('snaps')">📷 Snapshots</div>
-      <div class="nav-item" :class="{active:pg==='images'}" @click="go('images')">Images</div>
+      <div class="nav-item" :class="{active:pg==='images'}" @click="go('images')">🖼 Images</div>
       <div class="nav-item" :class="{active:pg==='import'}" @click="go('import')">📥 Import</div>
       <div class="nav-sep"></div>
-      <div class="nav-item" :class="{active:pg==='clone'}" @click="go('clone')">Clone</div>
-      <div class="nav-item" :class="{active:pg==='history'}" @click="go('history')">History</div>
+      <div class="nav-item" :class="{active:pg==='clone'}" @click="go('clone')">🧬 Clone</div>
+      <div class="nav-item" :class="{active:pg==='history'}" @click="go('history')">📋 History</div>
       <div class="nav-sep"></div>
       <div class="nav-item" :class="{active:pg==='daemon'}" @click="go('daemon')">⏱ Scheduler</div>
       <div class="nav-item" :class="{active:pg==='settings'}" @click="go('settings')">⚙ Settings</div>
@@ -635,7 +635,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
     <!-- Images page -->
     <div x-show="pg==='images'">
       <div class="flex gap mb16" style="align-items:center">
-        <div class="page-title">Images</div>
+        <div class="page-title">🖼 Images</div>
         <button class="btn btn-s btn-sm mla" @click="loadImages()">↻ Refresh</button>
       </div>
 
