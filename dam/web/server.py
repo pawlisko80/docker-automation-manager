@@ -800,12 +800,29 @@ async def list_images(_=Depends(require_auth)):
         import docker as _docker
         client = _docker.from_env()
 
-        # Build set of full image IDs in use by any container (running or stopped)
-        in_use_full_ids = set()
-        for c in client.containers.list(all=True):
+        # Collect ALL ways a container can reference an image
+        in_use_full_ids = set()    # by full sha256 image ID
+        in_use_image_ids = set()   # by container's ImageID field
+        in_use_tags = set()        # by image tag string (normalized)
+        containers = client.containers.list(all=True)
+        for c in containers:
             try:
-                # Use full 64-char image ID for reliable matching
                 in_use_full_ids.add(c.image.id)
+            except Exception:
+                pass
+            try:
+                attrs = c.attrs
+                # ImageID in container inspect is the definitive reference
+                img_id = attrs.get("Image", "")
+                if img_id:
+                    in_use_image_ids.add(img_id)
+                # Config.Image is the tag used to create the container
+                cfg_image = attrs.get("Config", {}).get("Image", "")
+                if cfg_image:
+                    # Normalize: add :latest if no tag specified
+                    if ":" not in cfg_image.split("/")[-1]:
+                        cfg_image = cfg_image + ":latest"
+                    in_use_tags.add(cfg_image)
             except Exception:
                 pass
 
@@ -814,22 +831,16 @@ async def list_images(_=Depends(require_auth)):
             tags = img.tags or ["<none>:<none>"]
             size_mb = round(img.attrs.get("Size", 0) / 1024 / 1024, 1)
             created = img.attrs.get("Created", "")[:19].replace("T", " ")
-            # Match by full image ID
-            in_use = img.id in in_use_full_ids
-            # Also check if any container references this image by tag
-            if not in_use:
-                for tag in tags:
-                    for c in client.containers.list(all=True):
-                        try:
-                            if c.attrs.get("Config", {}).get("Image", "") == tag:
-                                in_use = True
-                                break
-                        except Exception:
-                            pass
-                    if in_use:
-                        break
             short_id = img.id.replace("sha256:", "")[:12]
-            dangling = not img.tags  # <none>:<none> images
+            dangling = not img.tags
+
+            # Check all three matching methods
+            in_use = (
+                img.id in in_use_full_ids
+                or img.id in in_use_image_ids
+                or any(t in in_use_tags for t in tags if t != "<none>:<none>")
+            )
+
             images.append({
                 "id": short_id,
                 "full_id": img.id,
