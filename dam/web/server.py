@@ -416,11 +416,42 @@ async def get_snapshots(_=Depends(require_auth)):
 
 @app.post("/api/snapshots")
 async def take_snapshot(_=Depends(require_auth)):
+    if _snapshot_manager is None:
+        raise HTTPException(status_code=503, detail="Snapshot manager not initialized — check server startup logs")
+    if _platform is None:
+        raise HTTPException(status_code=503, detail="Platform not initialized — check server startup logs")
     try:
         inspector = Inspector(_platform)
         configs = inspector.inspect_all(settings_containers=_settings.get("containers", {}) or {})
         path = _snapshot_manager.save(configs, _platform, label="web-manual")
         return {"ok": True, "filename": path.name}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/snapshots/{snapshot_id}/rollback")
+async def rollback_snapshot(snapshot_id: int, _=Depends(require_auth)):
+    """Recreate containers from a snapshot (rollback)."""
+    if _snapshot_manager is None:
+        raise HTTPException(status_code=503, detail="Snapshot manager not initialized")
+    snaps = _snapshot_manager.list_snapshots()
+    if snapshot_id >= len(snaps):
+        raise HTTPException(status_code=404, detail="Snapshot not found")
+    try:
+        result = _snapshot_manager.load(snaps[snapshot_id])
+        if not result:
+            raise HTTPException(status_code=500, detail="Could not load snapshot")
+        snap_meta, snap_configs = result
+        dam_cfg = _settings.get("dam", {})
+        updater = Updater(platform=_platform, dry_run=False,
+                          recreate_delay=dam_cfg.get("recreate_delay", 5))
+        results = []
+        for cfg in snap_configs:
+            r = updater.update_one(cfg)
+            results.append({"name": r.container_name, "status": r.status.value, "error": r.error})
+        return {"ok": True, "snapshot": snaps[snapshot_id].name, "results": results}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -434,6 +465,36 @@ async def get_snapshot(snapshot_id: int, _=Depends(require_auth)):
     return {"meta": meta, "containers": [_cfg_to_dict(c) for c in configs]}
 
 
+_drift_ignored: set = set()  # container names to ignore in drift
+_update_history: list = []   # recent update runs
+_UPDATE_HISTORY_MAX = 50     # keep last 50 runs
+
+
+@app.post("/api/drift/ignore/{container_name}")
+async def drift_ignore(container_name: str, _=Depends(require_auth)):
+    """Add a container to the drift ignore list."""
+    _drift_ignored.add(container_name)
+    return {"ok": True, "ignored": sorted(_drift_ignored)}
+
+
+@app.delete("/api/drift/ignore/{container_name}")
+async def drift_unignore(container_name: str, _=Depends(require_auth)):
+    """Remove a container from the drift ignore list."""
+    _drift_ignored.discard(container_name)
+    return {"ok": True, "ignored": sorted(_drift_ignored)}
+
+
+@app.get("/api/update/history")
+async def update_history(_=Depends(require_auth)):
+    """Return recent update run history."""
+    return {"history": _update_history}
+
+
+@app.get("/api/drift/ignore")
+async def drift_ignored_list(_=Depends(require_auth)):
+    return {"ignored": sorted(_drift_ignored)}
+
+
 @app.get("/api/drift")
 async def get_drift(_=Depends(require_auth)):
     result = _snapshot_manager.load_latest()
@@ -445,8 +506,12 @@ async def get_drift(_=Depends(require_auth)):
         live = inspector.inspect_all(settings_containers=_settings.get("containers", {}) or {})
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
+    # Filter out ignored containers from both sides
+    if _drift_ignored:
+        snap_configs = [c for c in snap_configs if c.name not in _drift_ignored]
+        live = [c for c in live if c.name not in _drift_ignored]
     report = DriftDetector().compare(snap_configs, live, f"snapshot ({snap_meta['captured_at']})", "live")
-    return {"has_drift": report.has_drift, "summary": report.summary(),
+    return {"has_drift": report.has_drift, "summary": report.summary(), "ignored": sorted(_drift_ignored),
             "snapshot_label": snap_meta.get("captured_at", "unknown"),
             "items": [{"container_name": i.container_name, "field": i.field, "severity": i.severity.value,
                        "description": i.description, "old_value": i.old_value, "new_value": i.new_value}
@@ -498,6 +563,27 @@ async def update_run(req: UpdateRequest, _=Depends(require_auth)):
             if dam_cfg.get("auto_prune", True) and summary["updated"] > 0:
                 await queue.put(json.dumps({"type": "progress", "container": "", "message": "Pruning old images..."}))
                 Pruner(dry_run=False).prune(results)
+            # Record in update history
+            import datetime as _dt
+            _update_history.insert(0, {
+                "timestamp": _dt.datetime.utcnow().isoformat(timespec="seconds") + "Z",
+                "containers": [r.container_name for r in results],
+                "updated": summary.get("updated", 0),
+                "skipped": summary.get("skipped", 0),
+                "failed": summary.get("failed", 0),
+                "results": [{"name": r.container_name, "status": r.status.value, "error": r.error}
+                            for r in results],
+            })
+            if len(_update_history) > _UPDATE_HISTORY_MAX:
+                _update_history.pop()
+            # Send notifications
+            try:
+                from dam.core.notifier import Notifier, NotificationConfig
+                notifier = Notifier(NotificationConfig.from_settings(_settings))
+                notifier.notify_update_complete(
+                    summary.get("updated", 0), summary.get("failed", 0), results)
+            except Exception:
+                pass
             await queue.put(json.dumps({"type": "done", "summary": summary}))
         except Exception as e:
             await queue.put(json.dumps({"type": "error", "message": str(e)}))
@@ -698,6 +784,156 @@ def _generate_migration_script(configs) -> str:
     return "\n".join(script_lines)
 
 
+class CloneRequest(BaseModel):
+    source: str
+    new_name: str
+    new_ip: Optional[str] = None
+    env_overrides: Optional[dict] = None
+    port_overrides: Optional[list] = None
+    dry_run: bool = False
+
+
+@app.get("/api/images")
+async def list_images(_=Depends(require_auth)):
+    """List all Docker images."""
+    try:
+        import docker as _docker
+        client = _docker.from_env()
+        images = []
+        for img in client.images.list():
+            tags = img.tags or ["<none>:<none>"]
+            size_mb = round(img.attrs.get("Size", 0) / 1024 / 1024, 1)
+            created = img.attrs.get("Created", "")[:19].replace("T", " ")
+            images.append({
+                "id": img.short_id.replace("sha256:", ""),
+                "tags": tags,
+                "size_mb": size_mb,
+                "created": created,
+                "in_use": False,  # updated below
+            })
+        # Mark images in use by running containers
+        in_use_ids = set()
+        for c in client.containers.list(all=True):
+            in_use_ids.add(c.image.short_id.replace("sha256:", ""))
+        for img in images:
+            img["in_use"] = img["id"] in in_use_ids
+        images.sort(key=lambda x: (not x["in_use"], x["tags"][0]))
+        return {"images": images}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/images/{image_id}")
+async def delete_image(image_id: str, force: bool = False, _=Depends(require_auth)):
+    """Remove a Docker image."""
+    try:
+        import docker as _docker
+        client = _docker.from_env()
+        client.images.remove(image_id, force=force)
+        return {"ok": True, "removed": image_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/images/pull")
+async def pull_image(req: dict, _=Depends(require_auth)):
+    """Pull a Docker image by name."""
+    try:
+        import docker as _docker
+        name = req.get("name", "")
+        if not name:
+            raise HTTPException(status_code=400, detail="Image name required")
+        client = _docker.from_env()
+        img = client.images.pull(name)
+        return {"ok": True, "id": img.short_id, "tags": img.tags}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/notifications/test")
+async def test_notification(_=Depends(require_auth)):
+    """Send a test notification using current settings."""
+    try:
+        from dam.core.notifier import Notifier, NotificationConfig
+        notifier = Notifier(NotificationConfig.from_settings(_settings))
+        if not notifier.cfg.enabled:
+            return {"ok": False, "message": "Notifications are disabled in settings"}
+        ok = notifier.test()
+        return {"ok": ok, "message": "Test sent" if ok else "Send failed — check URL/config"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/containers/clone")
+async def clone_container(req: CloneRequest, _=Depends(require_auth)):
+    """Clone a container with optional config overrides."""
+    try:
+        import docker as _docker
+        client = _docker.from_env()
+
+        # Find source container
+        try:
+            client.containers.get(req.source)  # verify exists
+        except Exception:
+            raise HTTPException(status_code=404, detail=f"Container '{req.source}' not found")
+
+        # Check new name doesn't already exist
+        try:
+            client.containers.get(req.new_name)
+            raise HTTPException(status_code=409, detail=f"Container '{req.new_name}' already exists")
+        except _docker.errors.NotFound:
+            pass
+
+        # Inspect source to build run config
+        inspector = Inspector(_platform)
+        all_cfgs = inspector.inspect_all(settings_containers=_settings.get("containers", {}) or {})
+        src_cfg = next((c for c in all_cfgs if c.name == req.source), None)
+        if not src_cfg:
+            raise HTTPException(status_code=404, detail=f"Could not inspect '{req.source}'")
+
+        # Apply overrides
+        import copy
+        cfg = copy.deepcopy(src_cfg)
+        cfg.name = req.new_name
+
+        if req.env_overrides:
+            cfg.env = {**(cfg.env or {}), **req.env_overrides}
+
+        if req.new_ip and cfg.networks:
+            for net in cfg.networks:
+                if net.is_static:
+                    net.ip_address = req.new_ip
+
+        # Build preview of what will be created
+        from dam.core.exporter import Exporter
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            from pathlib import Path as _Path
+            paths = Exporter().export([cfg], "docker-run", _Path(tmpdir), single_file=True)
+            preview = paths[0].read_text() if paths else ""
+
+        if req.dry_run:
+            return {"ok": True, "dry_run": True, "preview": preview, "name": req.new_name}
+
+        # Actually create the container using Docker SDK directly
+        from dam.core.updater import _build_run_kwargs
+        import docker as _docker2
+        client2 = _docker2.from_env()
+        run_kwargs = _build_run_kwargs(cfg)
+        run_kwargs["name"] = req.new_name
+        run_kwargs["detach"] = True
+        container = client2.containers.run(**run_kwargs)
+        return {"ok": True, "status": "created", "name": req.new_name,
+                "id": container.short_id, "preview": preview}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/export")
 async def export_containers(req: ExportRequest, _=Depends(require_auth)):
     if req.fmt not in FORMATS and req.fmt != "migration":
@@ -868,6 +1104,9 @@ async def get_settings(_=Depends(require_auth)):
             "log_retention_days": dam_cfg.get("log_retention_days", 30),
             "auto_prune": dam_cfg.get("auto_prune", True),
             "recreate_delay": dam_cfg.get("recreate_delay", 5),
+            "notifications_enabled": str(dam_cfg.get("notifications", {}).get("enabled", False)).lower(),
+            "notifications_provider": dam_cfg.get("notifications", {}).get("provider", "ntfy"),
+            "notifications_url": dam_cfg.get("notifications", {}).get("ntfy_url", ""),
         },
         "daemon": {
             "schedule": daemon_cfg.get("schedule", "0 2 1 * *"),
@@ -885,6 +1124,9 @@ class SettingsUpdateRequest(BaseModel):
     auto_prune: Optional[bool] = None
     recreate_delay: Optional[int] = None
     daemon_schedule: Optional[str] = None
+    notifications_enabled: Optional[str] = None
+    notifications_provider: Optional[str] = None
+    notifications_url: Optional[str] = None
 
 
 @app.post("/api/settings")

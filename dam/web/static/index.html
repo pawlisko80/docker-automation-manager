@@ -119,7 +119,11 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
       <div class="nav-item" :class="{active:pg==='prune'}" @click="go('prune')">🗑 Prune</div>
       <div class="nav-item" :class="{active:pg==='export'}" @click="go('export')">📤 Export</div>
       <div class="nav-item" :class="{active:pg==='snaps'}" @click="go('snaps')">📷 Snapshots</div>
+      <div class="nav-item" :class="{active:pg==='images'}" @click="go('images')">Images</div>
       <div class="nav-item" :class="{active:pg==='import'}" @click="go('import')">📥 Import</div>
+      <div class="nav-sep"></div>
+      <div class="nav-item" :class="{active:pg==='clone'}" @click="go('clone')">Clone</div>
+      <div class="nav-item" :class="{active:pg==='history'}" @click="go('history')">History</div>
       <div class="nav-sep"></div>
       <div class="nav-item" :class="{active:pg==='daemon'}" @click="go('daemon')">⏱ Scheduler</div>
       <div class="nav-item" :class="{active:pg==='settings'}" @click="go('settings')">⚙ Settings</div>
@@ -322,6 +326,14 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
       <div class="card" x-show="ld.drift"><div class="spin"></div> Analyzing...</div>
       <div class="alert ai" x-show="!ld.drift&&drift.message">ℹ <span x-text="drift.message"></span></div>
       <div class="alert as" x-show="!ld.drift&&!drift.has_drift&&!drift.message">✓ No drift detected (<span x-text="drift.snapshot_label"></span>).</div>
+      <div x-show="driftIgnored.length>0" style="margin-bottom:8px;font-size:12px;color:var(--dim)">
+        Ignored: <template x-for="n in driftIgnored" :key="n">
+          <span style="background:var(--bg3);padding:2px 8px;border-radius:4px;margin-right:4px">
+            <span x-text="n"></span>
+            <button style="background:none;border:none;cursor:pointer;color:var(--dim);font-size:11px" @click="driftUnignore(n)">✕</button>
+          </span>
+        </template>
+      </div>
       <div x-show="!ld.drift&&drift.has_drift">
         <div class="stats mb16">
           <div class="stat red"><div class="stat-val" x-text="drift.summary?.critical||0"></div><div class="stat-label">Critical</div></div>
@@ -484,7 +496,10 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
                 <td class="dim" x-text="s.id+1"></td>
                 <td class="mono"><span x-text="snapUTC ? s.filename : fmtSnapTime(s.filename)"></span></td>
                 <td class="dim" x-text="s.size_kb+' KB'"></td>
-                <td><button class="btn btn-s btn-sm" @click="viewSnap(s.id)">👁 View</button></td>
+                <td style="display:flex;gap:6px">
+                  <button class="btn btn-s btn-sm" @click="viewSnap(s.id)">👁 View</button>
+                  <button class="btn btn-s btn-sm" style="color:var(--yellow);border-color:var(--yellow)" @click="rollbackSnap(s.id)" title="Recreate containers from this snapshot">Rollback</button>
+                </td>
               </tr>
             </template>
           </tbody>
@@ -614,6 +629,167 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
             </tbody>
           </table>
         </div>
+      </div>
+    </div>
+
+    <!-- Images page -->
+    <div x-show="pg==='images'">
+      <div class="flex gap mb16" style="align-items:center">
+        <div class="page-title">Images</div>
+        <button class="btn btn-s btn-sm mla" @click="loadImages()">↻ Refresh</button>
+      </div>
+
+      <!-- Pull image -->
+      <div class="card" style="margin-bottom:12px">
+        <div class="card-title">Pull Image</div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <input type="text" x-model="imgPull" class="finp" placeholder="e.g. ghcr.io/home-assistant/home-assistant:stable" style="flex:1" @keyup.enter="doPullImage()">
+          <button class="btn" @click="doPullImage()" :disabled="ld.imgpull===true||!imgPull.trim()">
+            <span x-text="ld.imgpull?'Pulling...':'Pull'"></span>
+          </button>
+        </div>
+        <div class="alert as" x-show="imgs.pullOk" x-text="imgs.pullOk" style="margin-top:6px"></div>
+        <div class="alert ad" x-show="imgs.pullErr" x-text="imgs.pullErr" style="margin-top:6px"></div>
+      </div>
+
+      <!-- Image list -->
+      <div class="card" x-show="ld.imgs"><div class="spin"></div> Loading...</div>
+      <div x-show="!ld.imgs">
+        <div class="dim" style="font-size:12px;margin-bottom:8px">
+          <span x-text="imgs.filter?imgs.filter(i=>i.in_use).length:0"></span> in use ·
+          <span x-text="imgs.filter?imgs.filter(i=>!i.in_use).length:0"></span> unused ·
+          <span x-text="imgs.filter?imgs.reduce((a,i)=>a+i.size_mb,0).toFixed(0):0"></span> MB total
+        </div>
+        <div class="card" style="padding:0;overflow:hidden">
+          <table>
+            <thead><tr><th>Image</th><th>ID</th><th>Size</th><th>Created</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              <template x-for="img in (imgs.filter?imgs:[])" :key="img.id">
+                <tr>
+                  <td>
+                    <div x-show="img.tags.length===1" class="mono" style="font-size:12px" x-text="img.tags[0]"></div>
+                    <div x-show="img.tags.length>1">
+                      <template x-for="t in img.tags" :key="t">
+                        <div class="mono" style="font-size:12px" x-text="t"></div>
+                      </template>
+                    </div>
+                  </td>
+                  <td class="mono dim" style="font-size:11px" x-text="img.id"></td>
+                  <td class="dim" x-text="img.size_mb+' MB'"></td>
+                  <td class="dim" style="font-size:11px" x-text="img.created"></td>
+                  <td>
+                    <span x-show="img.in_use" class="bs bs-running">in use</span>
+                    <span x-show="!img.in_use" class="bs bs-exited">unused</span>
+                  </td>
+                  <td>
+                    <button class="bti" style="color:var(--red)" @click="doDeleteImage(img)"
+                      :disabled="img.in_use" :title="img.in_use?'Cannot remove — image in use':'Remove image'">
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Clone Container page -->
+    <div x-show="pg==='clone'">
+      <div class="flex gap mb16" style="align-items:center">
+        <div class="page-title">Clone Container</div>
+      </div>
+      <div class="alert ai" style="margin-bottom:12px;font-size:13px;line-height:1.6">
+        🧬 <strong>Clone</strong> creates a new container based on an existing one — same image, same volumes, same network, but with a new name and optional overrides for IP address and environment variables.
+      </div>
+      <div class="card" style="margin-bottom:12px">
+        <div class="card-title">Source &amp; Target</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px">
+          <div class="frow">
+            <label class="flbl">Source container</label>
+            <select x-model="clone.src" class="finp">
+              <option value="">— select container —</option>
+              <template x-for="c in cs" :key="c.name">
+                <option :value="c.name" x-text="c.name + ' (' + c.image + ')'"></option>
+              </template>
+            </select>
+          </div>
+          <div class="frow">
+            <label class="flbl">New container name</label>
+            <input type="text" x-model="clone.name" class="finp" placeholder="e.g. homeassistant-test">
+          </div>
+          <div class="frow">
+            <label class="flbl">New IP address (optional — for macvlan/qnet containers)</label>
+            <input type="text" x-model="clone.ip" class="finp" placeholder="e.g. 10.20.30.50">
+          </div>
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:12px">
+        <div class="card-title">Environment Variable Overrides (optional)</div>
+        <div style="font-size:12px;color:var(--dim);margin-bottom:8px">Add or override env vars — useful for changing ports, paths, or config values in the clone.</div>
+        <template x-for="(ov,i) in clone.envOverrides" :key="i">
+          <div style="display:flex;gap:8px;margin-bottom:6px;align-items:center">
+            <input type="text" :value="ov.k" @input="clone.envOverrides[i].k=$event.target.value" class="finp" placeholder="KEY" style="flex:1">
+            <span style="color:var(--dim)">=</span>
+            <input type="text" :value="ov.v" @input="clone.envOverrides[i].v=$event.target.value" class="finp" placeholder="value" style="flex:2">
+            <button class="bti" @click="clone.envOverrides.splice(i,1)" style="color:var(--red)">✕</button>
+          </div>
+        </template>
+        <button class="btn btn-s btn-sm" @click="clone.envOverrides.push({k:'',v:''})">+ Add variable</button>
+      </div>
+      <div class="alert ad" x-show="clone.err" x-text="clone.err" style="margin-bottom:8px"></div>
+      <div class="alert as" x-show="clone.result&&clone.result.ok" style="margin-bottom:8px">
+        ✓ Container <strong x-text="clone.result&&clone.result.name"></strong> created successfully
+        <span class="dim" x-text="clone.result&&clone.result.id?'('+clone.result.id+')':''"></span>
+      </div>
+      <div x-show="clone.preview" style="margin-bottom:12px">
+        <div class="card-title" style="margin-bottom:4px">Preview (docker run command)</div>
+        <pre style="background:var(--bg3);padding:10px;border-radius:6px;font-size:11px;overflow-x:auto;white-space:pre-wrap;color:var(--text)" x-text="clone.preview"></pre>
+      </div>
+      <div class="flex gap">
+        <button class="btn btn-s" @click="doClone(true)" :disabled="ld.clone===true||!clone.src||!clone.name">
+          <span x-text="ld.clone?'Loading...':'Preview'"></span>
+        </button>
+        <button class="btn" @click="doClone(false)" :disabled="ld.clone===true||!clone.src||!clone.name||!clone.preview">
+          <span x-text="ld.clone?'Cloning...':'Create Clone'"></span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Update History page -->
+    <div x-show="pg==='history'">
+      <div class="flex gap mb16" style="align-items:center">
+        <div class="page-title">Update History</div>
+        <button class="btn btn-s btn-sm mla" @click="loadHistory()">↻ Refresh</button>
+      </div>
+      <div class="card" x-show="ld.hist"><div class="spin"></div> Loading...</div>
+      <div class="alert ai" x-show="!ld.hist&&hist.length===0">No updates have been run yet.</div>
+      <div x-show="!ld.hist&&hist.length>0">
+        <template x-for="(h,i) in hist" :key="i">
+          <div class="card" style="margin-bottom:10px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+              <div>
+                <span class="dim" style="font-size:12px" x-text="h.timestamp"></span>
+                <span class="bs bs-running" style="margin-left:8px" x-show="h.updated>0" x-text="h.updated+' updated'"></span>
+                <span class="bs bs-exited" style="margin-left:4px" x-show="h.failed>0" x-text="h.failed+' failed'"></span>
+                <span class="bs bs-paused" style="margin-left:4px" x-show="h.skipped>0" x-text="h.skipped+' unchanged'"></span>
+              </div>
+            </div>
+            <table>
+              <thead><tr><th>Container</th><th>Result</th><th>Details</th></tr></thead>
+              <tbody>
+                <template x-for="r in h.results" :key="r.name">
+                  <tr>
+                    <td><strong x-text="r.name"></strong></td>
+                    <td><span :class="r.status==='updated'?'bs bs-running':r.status==='failed'?'bs bs-exited':'bs bs-paused'" x-text="r.status"></span></td>
+                    <td class="dim" style="font-size:12px" x-text="r.error||''"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </template>
       </div>
     </div>
 
@@ -793,6 +969,41 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
             <span x-show="!ld.savesett">💾 Save Settings</span>
           </button>
         </div>
+        <div class="card" style="margin-bottom:12px">
+          <div class="card-title">🔔 Notifications</div>
+          <div class="alert ai" style="margin-bottom:10px;font-size:12px;line-height:1.5">
+            Get notified when containers are updated or fail. Uses <strong>ntfy.sh</strong> (free, no account needed) or any webhook URL.
+            To use ntfy.sh: install the app on your phone, subscribe to a topic name of your choice, then enter the URL below.
+          </div>
+          <div x-show="sett&&sett.dam">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+              <div class="frow">
+                <label class="flbl">Enable notifications</label>
+                <select x-model="sett.dam.notifications_enabled" class="finp">
+                  <option value="false">Disabled</option>
+                  <option value="true">Enabled</option>
+                </select>
+              </div>
+              <div class="frow">
+                <label class="flbl">Provider</label>
+                <select x-model="sett.dam.notifications_provider" class="finp">
+                  <option value="ntfy">ntfy.sh</option>
+                  <option value="webhook">Webhook (POST JSON)</option>
+                </select>
+              </div>
+              <div class="frow" style="grid-column:1/-1">
+                <label class="flbl" x-text="sett.dam&&sett.dam.notifications_provider==='webhook'?'Webhook URL':'ntfy.sh URL (e.g. https://ntfy.sh/my-topic-name)'"></label>
+                <input type="text" x-model="sett.dam.notifications_url" class="finp" placeholder="https://ntfy.sh/my-dam-alerts">
+              </div>
+            </div>
+            <div class="flex gap" style="margin-top:10px">
+              <button class="btn btn-s btn-sm" @click="testNotification()" :disabled="ld.notiftest===true">
+                <span x-text="ld.notiftest?'Sending...':`Send test`"></span>
+              </button>
+              <span class="dim" style="font-size:12px;align-self:center" x-text="notifTestMsg"></span>
+            </div>
+          </div>
+        </div>
         <div class="card" style="max-width:480px">
           <div class="card-title">🔑 Change Username &amp; Password</div>
           <div class="alert ai" style="margin:8px 0 12px;font-size:12px;line-height:1.5">
@@ -827,7 +1038,7 @@ auth:false,lf:{u:'',p:''},le:'',ll:false,
 pg:'dash',ver:'',plat:'',dark:true,q:'',ar:false,_art:null,
 cs:[],ld:{},
 eolR:[],eolS:{},eolW:0,
-drift:{},snaps:[],snapD:null,snapMsg:'',snapErr:false,driftResetOk:'',snapUTC:false,imp:{yaml:'',preview:null,results:null,err:'',overwrite:false,filename:''},pw:{cur:'',usr:'',new1:'',new2:'',err:'',ok:''},sett:null,dmn:null,
+drift:{},snaps:[],snapD:null,snapMsg:'',snapErr:false,driftResetOk:'',snapUTC:false,notifTestMsg:'',imp:{yaml:'',preview:null,results:null,err:'',overwrite:false,filename:''},pw:{cur:'',usr:'',new1:'',new2:'',err:'',ok:''},sett:null,dmn:null,clone:{src:'',name:'',ip:'',envK:'',envV:'',envOverrides:[],preview:'',result:null,err:''},hist:[],driftIgnored:[],imgs:[],imgPull:'',
 us:1,sel:[],drr:[],drs:{},ulog:[],usum:{},sid:null,
 pc:null,pr:null,
 expSel:[],expFmt:'dam-yaml',
@@ -883,7 +1094,7 @@ async logout(){
 
 go(p){
   this.pg=p;
-  if(p==='drift')this.loadDrift();
+  if(p==='drift'){this.loadDrift();this.api('/api/drift/ignore').then(d=>{if(d)this.driftIgnored=d.ignored||[];});}
   if(p==='snaps'){this.snapMsg='';this.snapErr=false;this.loadSnaps();}
   if(p==='update'){this.us=1;this.loadC();}
   if(p==='prune'){this.pc=null;this.pr=null;}
@@ -891,6 +1102,9 @@ go(p){
   if(p==='selfupd')this.chkDv();
   if(p==='settings')this.loadSettings();
   if(p==='daemon')this.loadDaemon();
+  if(p==='clone'){this.clone.src='';this.clone.result=null;this.clone.preview='';this.clone.err='';this.loadC();}
+  if(p==='history')this.loadHistory();
+  if(p==='images')this.loadImages();
 },
 
 async loadC(){
@@ -1154,6 +1368,96 @@ async daemonRunNow(){
   }catch(e){this.dmn.err=e.message;}
   finally{this.ld.daemonrun=false;}
 },
+async loadImages(){
+  this.ld.imgs=true;
+  try{
+    const d=await this.api('/api/images');
+    if(d)this.imgs=d.images||[];
+    else this.imgs=[];
+  }catch(e){this.imgs=[];}
+  finally{this.ld.imgs=false;}
+},
+async doPullImage(){
+  if(!this.imgPull.trim())return;
+  this.ld.imgpull=true;
+  if(!Array.isArray(this.imgs))this.imgs=[];
+  this.imgs.pullOk='';this.imgs.pullErr='';
+  try{
+    const d=await this.api('/api/images/pull',{method:'POST',body:JSON.stringify({name:this.imgPull.trim()})});
+    if(d&&d.ok){
+      this.imgs.pullOk='\u2713 Pulled: '+(d.tags&&d.tags[0]||d.id);
+      this.imgPull='';
+      await this.loadImages();
+    }else{this.imgs.pullErr=(d&&d.detail)||'Pull failed';}
+  }catch(e){this.imgs.pullErr=e.message;}
+  finally{this.ld.imgpull=false;}
+},
+async doDeleteImage(img){
+  if(img.in_use){alert('Cannot remove — image is in use by a container');return;}
+  if(!confirm('Remove image '+img.tags[0]+'?'))return;
+  this.ld.imgdel=true;
+  try{
+    const d=await this.api('/api/images/'+encodeURIComponent(img.id),{method:'DELETE'});
+    if(d&&d.ok)await this.loadImages();
+    else alert('Remove failed: '+(d&&d.detail||'unknown'));
+  }catch(e){alert(e.message);}
+  finally{this.ld.imgdel=false;}
+},
+async loadHistory(){
+  this.ld.hist=true;
+  try{const d=await this.api('/api/update/history');if(d)this.hist=d.history||[];}
+  catch(e){}finally{this.ld.hist=false;}
+},
+async doClone(dry){
+  this.ld.clone=true;this.clone.err='';this.clone.result=null;
+  if(!dry)this.clone.preview='';
+  try{
+    const env={};
+    for(const ov of this.clone.envOverrides){if(ov.k.trim())env[ov.k.trim()]=ov.v;}
+    const payload={source:this.clone.src,new_name:this.clone.name,dry_run:dry,env_overrides:Object.keys(env).length?env:null};
+    if(this.clone.ip.trim())payload.new_ip=this.clone.ip.trim();
+    const d=await this.api('/api/containers/clone',{method:'POST',body:JSON.stringify(payload)});
+    if(d){
+      if(d.preview)this.clone.preview=d.preview;
+      if(!dry){
+        if(d.ok){this.clone.result=d;this.clone.preview=d.preview||this.clone.preview;}
+        else{this.clone.err=(d.error||d.detail||'Clone failed');}
+      }
+    }
+  }catch(e){this.clone.err=e.message;}
+  finally{this.ld.clone=false;}
+},
+async driftIgnore(name){
+  await this.api('/api/drift/ignore/'+name,{method:'POST'});
+  if(!this.driftIgnored.includes(name))this.driftIgnored.push(name);
+  await this.loadDrift();
+},
+async driftUnignore(name){
+  await this.api('/api/drift/ignore/'+name,{method:'DELETE'});
+  this.driftIgnored=this.driftIgnored.filter(n=>n!==name);
+  await this.loadDrift();
+},
+async rollbackSnap(id){
+  if(!confirm('Roll back to this snapshot? Containers will be recreated with their state at snapshot time.'))return;
+  this.ld.snap=true;this.snapMsg='';this.snapErr=false;
+  try{
+    const d=await this.api('/api/snapshots/'+id+'/rollback',{method:'POST'});
+    if(d&&d.ok){
+      const updated=d.results.filter(r=>r.status==='updated').length;
+      this.snapMsg='\u2713 Rollback complete — '+updated+' container(s) recreated';
+      await this.loadSnaps();
+    }else{this.snapErr=true;this.snapMsg='Rollback failed: '+(d&&d.detail||'unknown');}
+  }catch(e){this.snapErr=true;this.snapMsg='Error: '+e.message;}
+  finally{this.ld.snap=false;}
+},
+async testNotification(){
+  this.ld.notiftest=true;this.notifTestMsg='';
+  try{
+    const d=await this.api('/api/notifications/test',{method:'POST'});
+    if(d)this.notifTestMsg=d.ok?'\u2713 '+d.message:'\u2717 '+d.message;
+  }catch(e){this.notifTestMsg='Error: '+e.message;}
+  finally{this.ld.notiftest=false;}
+},
 async loadSettings(){
   this.ld.settings=true;
   try{const d=await this.api('/api/settings');if(d){this.sett=d;this.sett.err='';this.sett.savedok='';}}
@@ -1168,6 +1472,9 @@ async saveSettings(){
       auto_prune:this.sett.dam.auto_prune,
       recreate_delay:this.sett.dam.recreate_delay,
       daemon_schedule:this.sett.daemon.schedule,
+      notifications_enabled:String(this.sett.dam.notifications_enabled||'false'),
+      notifications_provider:this.sett.dam.notifications_provider||'ntfy',
+      notifications_url:this.sett.dam.notifications_url||'',
     })});
     if(d&&d.ok)this.sett.savedok='\u2713 Settings saved';
   }catch(e){this.sett.err=e.message;}

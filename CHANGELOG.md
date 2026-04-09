@@ -11,6 +11,40 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.7.0] — 2026-04-09
+
+### Added
+
+- **Clone Container page** — duplicate any container with overrides: new name, new static IP, env var overrides; dry-run preview shows the `docker run` command before creating
+- **Update History page** — full log of every update run: timestamp, container results, updated/skipped/failed counts; persisted in memory across restarts
+- **Image Management page** — list all images with size, creation date, in-use status; pull new images by name; remove unused images with one click
+- **Rollback from snapshot** — Rollback button on Snapshots page recreates containers from any saved snapshot
+- **Drift ignore/dismiss** — Ignore button per container row in Drift; ignored containers excluded from future drift comparisons; unignore anytime; list shown below drift results
+- **Notifications** (`dam/core/notifier.py`) — ntfy.sh and generic webhook support; configurable in Settings; send test notification; fires on update success and failure
+  - `POST /api/notifications/test` — send test notification
+- New API endpoints:
+  - `GET  /api/images` — list all Docker images with in-use status
+  - `POST /api/images/pull` — pull image by name
+  - `DELETE /api/images/{id}` — remove image
+  - `GET  /api/update/history` — update run history
+  - `POST /api/containers/clone` — clone container with overrides (dry-run supported)
+  - `POST /api/snapshots/{id}/rollback` — recreate containers from snapshot
+  - `POST/DELETE /api/drift/ignore/{name}` — add/remove container from drift ignore list
+  - `GET  /api/drift/ignore` — list ignored containers
+
+### Fixed
+
+- Take Snapshot — added null guard for `_snapshot_manager` and `_platform`; surfaces proper 503 error if server not fully initialized
+- Notification settings — saved to `config/settings.yaml` and reloaded on next update run
+
+### Changed
+
+- 294 tests (was 281) — +13 notifier tests
+- Settings page now includes Notifications section (ntfy URL, provider, enable/disable, test button)
+- Drift page shows ignored container list with unignore buttons
+
+---
+
 ## [0.6.0] — 2026-04-08
 
 ### Added
