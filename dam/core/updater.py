@@ -288,7 +288,16 @@ class Updater:
         new_digest = _get_local_digest(self.client, image_ref)
 
         # --- Compare digests ---
-        if old_digest and old_digest == new_digest:
+        # Also check if the container is running on a different image ID than
+        # the current local image (e.g. image was pulled but container not recreated)
+        container_running_stale = False
+        if cfg.image_id and new_digest:
+            # cfg.image_id is the digest of what the container is currently running
+            # new_digest is what's in the local image store after pull
+            # If they differ, the container needs to be recreated even if registry digest unchanged
+            container_running_stale = (cfg.image_id != new_digest)
+
+        if old_digest and old_digest == new_digest and not container_running_stale:
             self._progress(cfg.name, f"{cfg.name}: image unchanged, skipping")
             return UpdateResult(
                 container_name=cfg.name,
@@ -297,6 +306,9 @@ class Updater:
                 new_image_id=new_digest,
                 duration_seconds=time.time() - start,
             )
+
+        if container_running_stale and old_digest == new_digest:
+            self._progress(cfg.name, f"{cfg.name}: container running on outdated image — recreating")
 
         # --- New image available ---
         self._progress(cfg.name, f"{cfg.name}: new image detected")

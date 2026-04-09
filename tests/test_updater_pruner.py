@@ -227,10 +227,28 @@ def test_update_image_unchanged():
     mock_client.images.get.return_value = mock_img
     mock_client.images.pull.return_value = mock_img
 
-    cfg = make_config()
+    # Container must be running on the same image as local for skip
+    cfg = make_config(image_id="sha256:sameimage")
     result = updater._update_one(cfg)
     assert result.status == UpdateStatus.SKIPPED
     assert result.old_image_id == result.new_image_id
+
+
+def test_update_image_stale_container():
+    """Container running on old image even though registry digest unchanged."""
+    updater, mock_client = make_updater()
+
+    # Registry digest unchanged (old pull == new pull)
+    mock_img = MagicMock()
+    mock_img.id = "sha256:newimage"
+    mock_client.images.get.return_value = mock_img
+    mock_client.images.pull.return_value = mock_img
+
+    # But container is running on a different (older) image
+    cfg = make_config(image_id="sha256:oldimage")
+    result = updater._update_one(cfg)
+    # Should still recreate because container is running on stale image
+    assert result.status == UpdateStatus.UPDATED
 
 
 # ============================================================
@@ -334,7 +352,9 @@ def test_update_all_returns_one_result_per_container():
     mock_client.images.get.return_value = mock_img
     mock_client.images.pull.return_value = mock_img
 
-    configs = [make_config("ha"), make_config("esphome"), make_config("nut")]
+    configs = [make_config("ha", image_id="sha256:same"),
+               make_config("esphome", image_id="sha256:same"),
+               make_config("nut", image_id="sha256:same")]
     results = updater.update_all(configs)
 
     assert len(results) == 3
@@ -361,7 +381,8 @@ def test_update_all_continues_after_failure():
     mock_client.images.get.return_value = same_img
     mock_client.images.pull.side_effect = pull_side_effect
 
-    configs = [make_config("ha"), make_config("esphome")]
+    # Second container: image_id matches local so it gets skipped (not stale)
+    configs = [make_config("ha"), make_config("esphome", image_id="sha256:same")]
     results = updater.update_all(configs)
 
     assert results[0].status == UpdateStatus.FAILED
