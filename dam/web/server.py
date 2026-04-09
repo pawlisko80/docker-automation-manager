@@ -793,6 +793,35 @@ class CloneRequest(BaseModel):
     dry_run: bool = False
 
 
+@app.get("/api/images/debug")
+async def debug_images(_=Depends(require_auth)):
+    """Debug: show raw container/image ID data for troubleshooting."""
+    try:
+        import docker as _docker
+        client = _docker.from_env()
+        containers = []
+        for c in client.containers.list(all=True):
+            try:
+                attrs = c.attrs
+                containers.append({
+                    "name": c.name,
+                    "image_id": attrs.get("Image", "")[:20],
+                    "config_image": attrs.get("Config", {}).get("Image", ""),
+                    "c_image_id": c.image.id[:20] if c.image else "none",
+                })
+            except Exception as e:
+                containers.append({"name": c.name, "error": str(e)})
+        imgs = []
+        for img in client.images.list(all=False):
+            imgs.append({
+                "id": img.id[:20],
+                "tags": img.tags,
+            })
+        return {"containers": containers, "images": imgs}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/images")
 async def list_images(_=Depends(require_auth)):
     """List all Docker images."""
