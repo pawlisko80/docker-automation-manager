@@ -282,14 +282,14 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
             </tbody>
           </table>
         </div>
-        <div class="alert as" x-show="drs.dry_run===0">✓ All images up to date.</div>
-        <div class="alert ai" x-show="drs.dry_run>0"><strong x-text="drs.dry_run"></strong> container(s) have new images.</div>
+        <div class="alert as" x-show="!drr.some(r=>r.would_update)">✓ All images up to date.</div>
+        <div class="alert ai" x-show="drr.some(r=>r.would_update)"><strong x-text="drr.filter(r=>r.would_update).length"></strong> container(s) have new images.</div>
         <div class="alert aw" x-show="drr.some(r=>r.container_name==='dam-web'&&r.would_update)" style="margin-top:4px">
           ⚠ <strong>dam-web</strong> has a new image. Updating it will restart this web UI — your browser will reconnect after ~30s.
         </div>
         <div class="flex gap" style="margin-top:8px">
           <button class="btn btn-s" @click="us=1">← Back</button>
-          <button class="btn btn-ok" @click="doUpdate()" :disabled="drs.dry_run===0||ld.upd">
+          <button class="btn btn-ok" @click="doUpdate()" :disabled="!drr.some(r=>r.would_update)||ld.upd===true">
             Apply Updates
           </button>
         </div>
