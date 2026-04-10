@@ -101,6 +101,9 @@ async def startup():
     global _sessions_file
     _sessions_file = cfg_path.parent / ".sessions"
     _load_sessions()
+    global _history_file
+    _history_file = cfg_path.parent / ".update_history.json"
+    _load_history()
     _snapshot_manager = SnapshotManager(retention=_settings.get("dam", {}).get("snapshot_retention", 10))
 
 
@@ -468,6 +471,29 @@ async def get_snapshot(snapshot_id: int, _=Depends(require_auth)):
 _drift_ignored: set = set()  # container names to ignore in drift
 _update_history: list = []   # recent update runs
 _UPDATE_HISTORY_MAX = 50     # keep last 50 runs
+_history_file: Optional[Path] = None
+
+
+def _load_history() -> None:
+    """Load update history from disk on startup."""
+    global _update_history
+    if _history_file and _history_file.exists():
+        try:
+            import json as _json
+            _update_history = _json.loads(_history_file.read_text())[:_UPDATE_HISTORY_MAX]
+        except Exception:
+            _update_history = []
+
+
+def _save_history() -> None:
+    """Persist update history to disk."""
+    if _history_file:
+        try:
+            import json as _json
+            _history_file.parent.mkdir(parents=True, exist_ok=True)
+            _history_file.write_text(_json.dumps(_update_history))
+        except Exception:
+            pass
 
 
 @app.post("/api/drift/ignore/{container_name}")
@@ -576,6 +602,7 @@ async def update_run(req: UpdateRequest, _=Depends(require_auth)):
             })
             if len(_update_history) > _UPDATE_HISTORY_MAX:
                 _update_history.pop()
+            _save_history()
             # Send notifications
             try:
                 from dam.core.notifier import Notifier, NotificationConfig
