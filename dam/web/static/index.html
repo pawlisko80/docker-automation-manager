@@ -260,7 +260,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
             </div>
           </template>
         </div>
-        <button class="btn btn-p" @click="dryRun()" :disabled="ld.dr||sel.length===0">
+        <button class="btn btn-p" @click="dryRun()" :disabled="ld.dr===true||sel.length===0">
           <span x-show="ld.dr" class="spin"></span>
           Check for Updates (Dry Run)
         </button>
@@ -402,7 +402,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
       <div class="page-title">Prune Unused Images</div>
       <div class="card" x-show="!pc">
         <p class="dim mb16">Preview images to remove before committing.</p>
-        <button class="btn btn-s" @click="loadPrune()" :disabled="ld.prune">
+        <button class="btn btn-s" @click="loadPrune()" :disabled="ld.prune===true">
           <span x-show="ld.prune" class="spin"></span>
           Preview
         </button>
@@ -414,7 +414,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
         </div>
         <div class="alert as" x-show="pc?.total_candidates===0">✓ Nothing to prune.</div>
         <div class="flex gap" x-show="pc?.total_candidates>0">
-          <button class="btn btn-d" @click="doPrune()" :disabled="ld.prune">
+          <button class="btn btn-d" @click="doPrune()" :disabled="ld.prune===true">
             <span x-show="ld.prune" class="spin"></span>
             
             Remove <span x-text="pc?.total_candidates"></span> image(s)
@@ -468,7 +468,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
           <strong>Bonus:</strong> Import <code>dam-migrate-config.yaml</code> via the Import page (accepts .zip directly)
         </div>
       </div>
-      <button class="btn btn-p" @click="doExp()" :disabled="ld.exp||expSel.length===0">
+      <button class="btn btn-p" @click="doExp()" :disabled="ld.exp===true||expSel.length===0">
         <span x-show="ld.exp" class="spin"></span>
         ↓ Download Export
       </button>
@@ -552,7 +552,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
         <strong> Update replaces DAM source files.</strong>
         Tries git pull first, falls back to GitHub zip download. Restart server after updating.
       </div>
-      <button class="btn btn-w" @click="doSelfUpd()" :disabled="ld.su||!dv||!dv.upd">
+      <button class="btn btn-w" @click="doSelfUpd()" :disabled="ld.su===true||!dv||!dv.upd">
         <span x-show="ld.su" class="spin"></span>
         ↓
         Update to v<span x-text="dv.latest||'latest'"></span>
@@ -587,9 +587,9 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
           <label style="display:flex;align-items:center;gap:6px;font-size:13px">
             <input type="checkbox" x-model="imp.overwrite"> Overwrite existing containers
           </label>
-          <button class="btn btn-s btn-sm mla" @click="impPreview()" :disabled="ld.imp||!imp.yaml.trim()">👁 Preview</button>
-          <button class="btn btn-sm" @click="impRun(false)" :disabled="ld.imp||!imp.yaml.trim()||!imp.preview">▶ Dry Run</button>
-          <button class="btn btn-sm" style="background:var(--green)" @click="impRun(true)" :disabled="ld.imp||!imp.yaml.trim()||!imp.preview">🚀 Import</button>
+          <button class="btn btn-s btn-sm mla" @click="impPreview()" :disabled="ld.imp===true||!imp.yaml.trim()">👁 Preview</button>
+          <button class="btn btn-sm" @click="impRun(false)" :disabled="ld.imp===true||!imp.yaml.trim()||!imp.preview">▶ Dry Run</button>
+          <button class="btn btn-sm" style="background:var(--green)" @click="impRun(true)" :disabled="ld.imp===true||!imp.yaml.trim()||!imp.preview">🚀 Import</button>
         </div>
       </div>
       <div class="card" x-show="ld.imp"><div class="spin"></div> Working...</div>
@@ -1038,7 +1038,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
           </div>
           <div class="alert ad" x-show="sett.err" x-text="sett.err" style="margin-top:10px"></div>
           <div class="alert as" x-show="sett.savedok" x-text="sett.savedok" style="margin-top:10px"></div>
-          <button class="btn" @click="saveSettings()" :disabled="ld.savesett" style="margin-top:12px">
+          <button class="btn" @click="saveSettings()" :disabled="ld.savesett===true" style="margin-top:12px">
             <span x-show="ld.savesett">⟳ Saving...</span>
             <span x-show="!ld.savesett">💾 Save Settings</span>
           </button>
@@ -1094,7 +1094,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
             <div class="frow"><label class="flbl">Confirm New Password</label><input type="password" x-model="pw.new2" class="finp" placeholder="Repeat new password"></div>
             <div class="alert ad" x-show="pw.err" x-text="pw.err" style="margin:8px 0"></div>
             <div class="alert as" x-show="pw.ok" x-text="pw.ok" style="margin:8px 0"></div>
-            <button class="btn" @click="changePwd()" :disabled="ld.pw||!pw.cur" style="margin-top:4px;width:100%">
+            <button class="btn" @click="changePwd()" :disabled="ld.pw===true||!pw.cur" style="margin-top:4px;width:100%">
               <span x-show="ld.pw">⟳ Saving...</span>
               <span x-show="!ld.pw">💾 Save Changes</span>
             </button>

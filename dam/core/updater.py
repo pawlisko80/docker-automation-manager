@@ -322,9 +322,12 @@ class Updater:
                 duration_seconds=time.time() - start,
             )
 
-        # --- Recreate ---
+        # --- Recreate using exact digest to avoid stale tag resolution ---
+        # Using sha256:xxx ensures Docker uses exactly the freshly pulled image
+        # e.g. "python:3.11-slim" tag might still resolve to old cached ID on some hosts
+        recreate_ref = new_digest if new_digest else image_ref
         try:
-            self._recreate(cfg, image_ref)
+            self._recreate(cfg, recreate_ref)
         except Exception as e:
             return UpdateResult(
                 container_name=cfg.name,
