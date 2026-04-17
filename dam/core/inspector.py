@@ -271,10 +271,22 @@ class Inspector:
         version_strategy = container_settings.get("version_strategy", "latest")
         pinned_digest = container_settings.get("pinned_digest", None)
 
+        # Resolve image name: if Config.Image is a bare sha256 digest,
+        # look up the actual tag from the image object
+        image_name = cc.get("Image", "")
+        image_id = attrs.get("Image", "")
+        if image_name.startswith("sha256:") or not image_name:
+            try:
+                img_obj = self.client.images.get(image_id)
+                if img_obj.tags:
+                    image_name = img_obj.tags[0]
+            except Exception:
+                pass  # Keep sha256 as fallback
+
         return ContainerConfig(
             name=name,
-            image=cc.get("Image", ""),
-            image_id=attrs.get("Image", ""),
+            image=image_name,
+            image_id=image_id,
             status=attrs.get("State", {}).get("Status", "unknown"),
             restart_policy=hc.get("RestartPolicy", {}).get("Name", "no"),
             network_mode=network_mode,
