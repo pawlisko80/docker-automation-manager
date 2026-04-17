@@ -611,7 +611,13 @@ async def update_run(req: UpdateRequest, _=Depends(require_auth)):
                     summary.get("updated", 0), summary.get("failed", 0), results)
             except Exception:
                 pass
-            await queue.put(json.dumps({"type": "done", "summary": summary}))
+            # Serialize summary — remove UpdateResult objects from failures list
+            safe_summary = {k: v for k, v in summary.items() if k != "failures"}
+            safe_summary["failures"] = [
+                {"name": r.container_name, "error": r.error}
+                for r in summary.get("failures", [])
+            ]
+            await queue.put(json.dumps({"type": "done", "summary": safe_summary}))
         except Exception as e:
             await queue.put(json.dumps({"type": "error", "message": str(e)}))
         finally:
