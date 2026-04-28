@@ -291,11 +291,30 @@ class Updater:
         # Also check if the container is running on a different image ID than
         # the current local image (e.g. image was pulled but container not recreated)
         container_running_stale = False
-        if cfg.image_id and new_digest:
-            # cfg.image_id is the digest of what the container is currently running
-            # new_digest is what's in the local image store after pull
-            # If they differ, the container needs to be recreated even if registry digest unchanged
-            container_running_stale = (cfg.image_id != new_digest)
+        if cfg.image_id and new_digest and cfg.image_id != new_digest:
+            # Only flag stale if the running image has NO tags (truly dangling).
+            # If a tagged newer image exists for this repo but the container runs
+            # on an older digest that still has ANY tag, skip — Docker resolved
+            # the tag correctly when the container was last started.
+            try:
+                running_img = self.client.images.get(cfg.image_id)
+                if not running_img.tags:
+                    # Untagged/dangling — check if a newer tagged version exists
+                    repo_digests = running_img.attrs.get("RepoDigests", [])
+                    if repo_digests:
+                        repo = repo_digests[0].split("@")[0]
+                        for tagged in self.client.images.list():
+                            for tag in tagged.tags:
+                                if tag.rsplit(":", 1)[0] == repo and tagged.id != cfg.image_id:
+                                    container_running_stale = True
+                                    break
+                            if container_running_stale:
+                                break
+                    else:
+                        # No repo info at all — definitely stale
+                        container_running_stale = True
+            except Exception:
+                pass  # Can't determine — don't flag stale
 
         if old_digest and old_digest == new_digest and not container_running_stale:
             self._progress(cfg.name, f"{cfg.name}: image unchanged, skipping")

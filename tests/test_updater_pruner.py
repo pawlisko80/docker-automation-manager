@@ -235,19 +235,34 @@ def test_update_image_unchanged():
 
 
 def test_update_image_stale_container():
-    """Container running on old image even though registry digest unchanged."""
+    """Container running on untagged (dangling) old image with newer tagged version — should recreate."""
     updater, mock_client = make_updater()
 
-    # Registry digest unchanged (old pull == new pull)
-    mock_img = MagicMock()
-    mock_img.id = "sha256:newimage"
-    mock_client.images.get.return_value = mock_img
-    mock_client.images.pull.return_value = mock_img
+    # New image has the tag
+    new_img = MagicMock()
+    new_img.id = "sha256:newimage"
+    new_img.tags = ["python:3.11-slim"]
+    new_img.attrs = {"RepoDigests": ["python@sha256:newimage"]}
 
-    # But container is running on a different (older) image
+    # Old image is untagged (dangling) but has RepoDigests pointing to same repo
+    old_img = MagicMock()
+    old_img.id = "sha256:oldimage"
+    old_img.tags = []  # no tags = dangling
+    old_img.attrs = {"RepoDigests": ["python@sha256:olddigest"]}
+
+    def get_image(ref):
+        if "oldimage" in ref:
+            return old_img
+        return new_img
+
+    mock_client.images.get.side_effect = get_image
+    mock_client.images.pull.return_value = new_img
+    # images.list() returns both — newer tagged one exists
+    mock_client.images.list.return_value = [new_img, old_img]
+
     cfg = make_config(image_id="sha256:oldimage")
     result = updater._update_one(cfg)
-    # Should still recreate because container is running on stale image
+    # Should recreate: running image is dangling AND newer tagged version exists
     assert result.status == UpdateStatus.UPDATED
 
 
