@@ -272,14 +272,35 @@ class Inspector:
         pinned_digest = container_settings.get("pinned_digest", None)
 
         # Resolve image name: if Config.Image is a bare sha256 digest,
-        # look up the actual tag from the image object
+        # look up the actual tag from the image object or a newer tagged version
         image_name = cc.get("Image", "")
         image_id = attrs.get("Image", "")
         if image_name.startswith("sha256:") or not image_name:
             try:
                 img_obj = self.client.images.get(image_id)
                 if img_obj.tags:
+                    # Image still has its tags
                     image_name = img_obj.tags[0]
+                else:
+                    # Dangling image (tags moved to newer pull).
+                    # Use RepoDigests to find the repo name, then find
+                    # a currently-tagged image with the same repo.
+                    repo_digests = img_obj.attrs.get("RepoDigests", [])
+                    matched = False
+                    if repo_digests:
+                        repo = repo_digests[0].split("@")[0]
+                        for tagged_img in self.client.images.list():
+                            for tag in tagged_img.tags:
+                                if tag.rsplit(":", 1)[0] == repo:
+                                    image_name = tag
+                                    matched = True
+                                    break
+                            if matched:
+                                break
+                        if not matched:
+                            # No tagged image found — use repo name with :latest
+                            suffix = repo.split("/")[-1]
+                            image_name = repo if ":" in suffix else repo + ":latest"
             except Exception:
                 pass  # Keep sha256 as fallback
 
