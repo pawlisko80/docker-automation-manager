@@ -580,8 +580,29 @@ async def update_run(req: UpdateRequest, _=Depends(require_auth)):
             updater = Updater(platform=_platform, dry_run=False,
                               recreate_delay=dam_cfg.get("recreate_delay", 5), progress_callback=on_progress)
             results = []
+            own_name = _settings.get("_own_container_name", "")
             for cfg in configs:
-                r = updater.update_one(cfg)
+                if own_name and cfg.name == own_name:
+                    # Self-update: schedule restart after a delay and skip recreate
+                    # (can't reliably recreate ourselves from inside the container)
+                    import threading
+
+                    def _self_restart():
+                        import time as _time
+                        import subprocess
+                        _time.sleep(3)
+                        subprocess.Popen(["docker", "restart", own_name])
+                    threading.Thread(target=_self_restart, daemon=True).start()
+                    from dam.core.updater import UpdateResult, UpdateStatus
+                    r = UpdateResult(
+                        container_name=cfg.name,
+                        status=UpdateStatus.UPDATED,
+                        old_image_id=cfg.image_id,
+                        new_image_id=cfg.image_id,
+                        duration_seconds=0,
+                    )
+                else:
+                    r = updater.update_one(cfg)
                 results.append(r)
                 await queue.put(json.dumps({"type": "result", "container": r.container_name,
                                             "status": r.status.value, "error": r.error}))
