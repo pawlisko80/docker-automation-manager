@@ -265,6 +265,15 @@ class Inspector:
         if network_mode.startswith("container:"):
             # Keep as-is — updater will handle this
             pass
+        elif network_mode == "none":
+            # HostConfig.NetworkMode="none" can occur when a container was
+            # manually reconnected to a network (e.g. after a failed update).
+            # Check NetworkSettings for the real active network.
+            live_nets = attrs.get("NetworkSettings", {}).get("Networks", {})
+            real_nets = {k: v for k, v in live_nets.items() if k != "none"}
+            if real_nets:
+                # Use the first real network as the effective network mode
+                network_mode = next(iter(real_nets))
 
         # Per-container settings overrides
         container_settings = settings_containers.get(name, {})
