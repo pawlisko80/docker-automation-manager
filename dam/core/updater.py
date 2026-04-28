@@ -246,15 +246,15 @@ class Updater:
 
         return results
 
-    def update_one(self, cfg: ContainerConfig) -> UpdateResult:
+    def update_one(self, cfg: ContainerConfig, skip_stale: bool = False) -> UpdateResult:
         """Update a single container. Public wrapper."""
-        return self._update_one(cfg)
+        return self._update_one(cfg, skip_stale=skip_stale)
 
     # ------------------------------------------------------------
     # Core update logic
     # ------------------------------------------------------------
 
-    def _update_one(self, cfg: ContainerConfig) -> UpdateResult:
+    def _update_one(self, cfg: ContainerConfig, skip_stale: bool = False) -> UpdateResult:
         start = time.time()
 
         # --- Pinned: never update ---
@@ -291,7 +291,7 @@ class Updater:
         # Also check if the container is running on a different image ID than
         # the current local image (e.g. image was pulled but container not recreated)
         container_running_stale = False
-        if cfg.image_id and new_digest and cfg.image_id != new_digest:
+        if not skip_stale and cfg.image_id and new_digest and cfg.image_id != new_digest:
             # Only flag stale if the running image has NO tags (truly dangling).
             # If a tagged newer image exists for this repo but the container runs
             # on an older digest that still has ANY tag, skip — Docker resolved
@@ -453,6 +453,15 @@ class Updater:
                             self._progress(cfg.name, f"[warn] Could not connect to {net_cfg.name}: {e}")
 
             except Exception as e:
+                # Network connect failed — container exists but is on 'none' network.
+                # Try to reconnect to original network as a safety measure.
+                self._progress(cfg.name, "[error] Network connect failed — attempting recovery...")
+                try:
+                    net = self.client.networks.get(primary_net)
+                    net.connect(container, ipv4_address=primary_ip)
+                    self._progress(cfg.name, f"[recovery] Reconnected {cfg.name} to {primary_net}")
+                except Exception as e2:
+                    self._progress(cfg.name, "[recovery failed] " + str(e2) + " — manual fix needed")
                 raise RuntimeError(f"Failed to connect {cfg.name} to network: {e}")
 
         self._progress(cfg.name, f"✓ {cfg.name} recreated successfully")

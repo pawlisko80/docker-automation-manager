@@ -550,7 +550,9 @@ async def update_dry_run(req: UpdateRequest, _=Depends(require_auth)):
         inspector = Inspector(_platform)
         all_cfgs = inspector.inspect_all(settings_containers=_settings.get("containers", {}) or {})
         configs = [c for c in all_cfgs if not req.containers or c.name in req.containers]
-        results = Updater(platform=_platform, dry_run=True, recreate_delay=0).update_all(configs)
+        own = _settings.get("_own_container_name", "")
+        _updater = Updater(platform=_platform, dry_run=True, recreate_delay=0)
+        results = [_updater.update_one(c, skip_stale=(own and c.name == own)) for c in configs]
         return {"results": [{"container_name": r.container_name, "status": r.status.value,
                              "old_image_id": r.old_image_id[:19] if r.old_image_id else None,
                              "new_image_id": r.new_image_id[:19] if r.new_image_id else None,
@@ -583,16 +585,44 @@ async def update_run(req: UpdateRequest, _=Depends(require_auth)):
             own_name = _settings.get("_own_container_name", "")
             for cfg in configs:
                 if own_name and cfg.name == own_name:
-                    # Self-update: schedule restart after a delay and skip recreate
-                    # (can't reliably recreate ourselves from inside the container)
+                    # Self-update: can't recreate ourselves from inside the container.
+                    # Schedule a stop+rm+run via the Docker socket after a short delay.
                     import threading
 
-                    def _self_restart():
+                    def _self_recreate():
                         import time as _time
-                        import subprocess
                         _time.sleep(3)
-                        subprocess.Popen(["docker", "restart", own_name])
-                    threading.Thread(target=_self_restart, daemon=True).start()
+                        # Get our own run config then recreate with new image
+                        try:
+                            import docker as _dk
+                            cli = _dk.from_env()
+                            ctr = cli.containers.get(own_name)
+                            run_img = cfg.image  # use tag name so Docker resolves fresh
+                            hc = ctr.attrs.get("HostConfig", {})
+                            binds = hc.get("Binds") or []
+                            ports = hc.get("PortBindings") or {}
+                            wdir = ctr.attrs.get("Config", {}).get("WorkingDir", "")
+                            cmd_args = ctr.attrs.get("Config", {}).get("Cmd") or []
+                            ctr.stop()
+                            ctr.remove()
+                            port_map = {}
+                            for cp, bindings in ports.items():
+                                for b in (bindings or []):
+                                    port_map[cp] = int(b.get("HostPort", cp.split("/")[0]))
+                            cli.containers.run(
+                                run_img,
+                                command=cmd_args,
+                                name=own_name,
+                                detach=True,
+                                volumes={b.split(":")[0]: {"bind": b.split(":")[1], "mode": "rw"}
+                                         for b in binds if ":" in b},
+                                ports=port_map,
+                                working_dir=wdir or None,
+                                restart_policy={"Name": hc.get("RestartPolicy", {}).get("Name", "unless-stopped")},
+                            )
+                        except Exception:
+                            pass
+                    threading.Thread(target=_self_recreate, daemon=True).start()
                     from dam.core.updater import UpdateResult, UpdateStatus
                     r = UpdateResult(
                         container_name=cfg.name,
@@ -602,7 +632,7 @@ async def update_run(req: UpdateRequest, _=Depends(require_auth)):
                         duration_seconds=0,
                     )
                 else:
-                    r = updater.update_one(cfg)
+                    r = updater.update_one(cfg, skip_stale=(own_name and cfg.name == own_name))
                 results.append(r)
                 await queue.put(json.dumps({"type": "result", "container": r.container_name,
                                             "status": r.status.value, "error": r.error}))
