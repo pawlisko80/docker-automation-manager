@@ -168,6 +168,16 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
         <div class="stat red"><div class="stat-val" x-text="cs.filter(c=>c.status==='exited').length"></div><div class="stat-label">Stopped</div></div>
         <div class="stat yellow"><div class="stat-val" x-text="eolW"></div><div class="stat-label">EOL Warnings</div></div>
       </div>
+      <!-- Network health warnings -->
+      <div x-show="netHealth.length>0" style="margin-bottom:8px">
+        <template x-for="n in netHealth" :key="n.name">
+          <div class="alert aw" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:8px">
+            <span>⚠ <strong x-text="n.name"></strong> — <span x-text="n.description"></span></span>
+            <button x-show="n.can_fix" class="btn btn-s btn-sm" style="white-space:nowrap;color:var(--yellow)"
+              @click="fixNetwork(n.name)">Fix (Recreate)</button>
+          </div>
+        </template>
+      </div>
       <div class="sb" x-show="cs.length>0">
         🔍
         <input type="search" x-model="q" placeholder="Search containers, images, IPs, tags, ports...">
@@ -1112,7 +1122,7 @@ auth:false,lf:{u:'',p:''},le:'',ll:false,
 pg:'dash',ver:'',plat:'',dark:true,q:'',ar:false,_art:null,
 cs:[],ld:{},
 eolR:[],eolS:{},eolW:0,
-drift:{},snaps:[],snapD:null,snapMsg:'',snapErr:false,driftResetOk:'',snapUTC:false,notifTestMsg:'',imp:{yaml:'',preview:null,results:null,err:'',overwrite:false,filename:''},pw:{cur:'',usr:'',new1:'',new2:'',err:'',ok:''},sett:null,dmn:null,clone:{src:'',name:'',ip:'',envK:'',envV:'',envOverrides:[],preview:'',result:null,err:''},hist:[],driftIgnored:[],imgs:[],imgPull:'',
+drift:{},snaps:[],snapD:null,snapMsg:'',snapErr:false,driftResetOk:'',snapUTC:false,notifTestMsg:'',imp:{yaml:'',preview:null,results:null,err:'',overwrite:false,filename:''},pw:{cur:'',usr:'',new1:'',new2:'',err:'',ok:''},sett:null,dmn:null,clone:{src:'',name:'',ip:'',envK:'',envV:'',envOverrides:[],preview:'',result:null,err:''},hist:[],driftIgnored:[],imgs:[],imgPull:'',netHealth:[],netHealth:[],
 us:1,sel:[],drr:[],drs:{},ulog:[],usum:{},sid:null,
 pc:null,pr:null,
 expSel:[],expFmt:'dam-yaml',
@@ -1143,6 +1153,7 @@ async loadAll(){
   const h=await fetch('/health').then(r=>r.json()).catch(()=>({}));
   this.ver=h.version||'';this.plat=h.platform||'';
   await Promise.all([this.loadC(),this.loadEol()]);
+  this.checkNetHealth();
   this.chkDv();
 },
 
@@ -1498,6 +1509,23 @@ async doDeleteImage(img){
     else alert('Remove failed: '+(d&&d.detail||'unknown'));
   }catch(e){alert(e.message);}
   finally{this.ld.imgdel=false;}
+},
+async checkNetHealth(){
+  try{
+    const d=await this.api('/api/network/health');
+    if(d)this.netHealth=d.broken||[];
+  }catch(e){this.netHealth=[];}
+},
+async fixNetwork(name){
+  if(!confirm('Recreate '+name+' with correct network? Container will restart briefly.'))return;
+  try{
+    const d=await this.api('/api/network/fix/'+name,{method:'POST'});
+    if(d&&d.ok){
+      await this.checkNetHealth();
+      await this.loadC();
+      alert('\u2713 '+name+' recreated on '+d.network+(d.ip?' ('+d.ip+')':''));
+    }else{alert('Fix failed: '+(d&&d.detail||'unknown'));}
+  }catch(e){alert(e.message);}
 },
 async loadHistory(){
   this.ld.hist=true;

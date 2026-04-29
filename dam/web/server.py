@@ -450,9 +450,15 @@ async def rollback_snapshot(snapshot_id: int, _=Depends(require_auth)):
                           recreate_delay=dam_cfg.get("recreate_delay", 5))
         results = []
         for cfg in snap_configs:
-            r = updater.update_one(cfg)
-            results.append({"name": r.container_name, "status": r.status.value, "error": r.error})
-        return {"ok": True, "snapshot": snaps[snapshot_id].name, "results": results}
+            # Force recreate — rollback always applies regardless of digest match
+            try:
+                updater._recreate(cfg, cfg.image)
+                results.append({"name": cfg.name, "status": "rolled_back", "error": None})
+            except Exception as e:
+                results.append({"name": cfg.name, "status": "failed", "error": str(e)})
+        return {"ok": True, "snapshot": snaps[snapshot_id].name,
+                "label": snap_meta.get("captured_at", ""),
+                "results": results}
     except HTTPException:
         raise
     except Exception as e:
@@ -875,6 +881,72 @@ class CloneRequest(BaseModel):
     env_overrides: Optional[dict] = None
     port_overrides: Optional[list] = None
     dry_run: bool = False
+
+
+@app.get("/api/network/health")
+async def network_health(_=Depends(require_auth)):
+    """Detect containers on 'none' network that should have a real network."""
+    try:
+        import docker as _docker
+        client = _docker.from_env()
+        broken = []
+        for c in client.containers.list(all=True):
+            try:
+                hc = c.attrs.get("HostConfig", {})
+                nets = c.attrs.get("NetworkSettings", {}).get("Networks", {})
+                mode = hc.get("NetworkMode", "")
+                real_nets = {k: v for k, v in nets.items() if k != "none"}
+                # Broken: NetworkMode=none but live networks show real connection
+                # OR NetworkMode=none with no real network (orphaned)
+                if mode == "none" and not real_nets:
+                    broken.append({
+                        "name": c.name,
+                        "status": c.status,
+                        "issue": "stuck_on_none",
+                        "description": "Container is on 'none' network — may not be reachable",
+                        "can_fix": False,
+                    })
+                elif mode == "none" and real_nets:
+                    # Was manually reconnected — needs recreate for proper startup
+                    net_name = next(iter(real_nets))
+                    ip = (real_nets[net_name].get("IPAMConfig") or {}).get("IPv4Address", "")
+                    broken.append({
+                        "name": c.name,
+                        "status": c.status,
+                        "issue": "needs_recreate",
+                        "description": (
+                            f"Started on 'none', manually reconnected to {net_name}"
+                            " — recreate needed for proper network init"
+                        ),
+                        "network": net_name,
+                        "ip": ip,
+                        "can_fix": True,
+                    })
+            except Exception:
+                pass
+        return {"ok": True, "broken": broken, "count": len(broken)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/network/fix/{container_name}")
+async def network_fix(container_name: str, _=Depends(require_auth)):
+    """Recreate a container with correct network from inception."""
+    try:
+        inspector = Inspector(_platform)
+        all_cfgs = inspector.inspect_all(settings_containers=_settings.get("containers", {}) or {})
+        cfg = next((c for c in all_cfgs if c.name == container_name), None)
+        if not cfg:
+            raise HTTPException(status_code=404, detail=f"Container {container_name} not found")
+        dam_cfg = _settings.get("dam", {})
+        updater = Updater(platform=_platform, dry_run=False,
+                          recreate_delay=dam_cfg.get("recreate_delay", 5))
+        updater._recreate(cfg, cfg.image)
+        return {"ok": True, "name": container_name, "network": cfg.network_mode, "ip": cfg.primary_ip()}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/images")
