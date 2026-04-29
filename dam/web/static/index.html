@@ -168,6 +168,7 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
         <div class="stat red"><div class="stat-val" x-text="cs.filter(c=>c.status==='exited').length"></div><div class="stat-label">Stopped</div></div>
         <div class="stat yellow"><div class="stat-val" x-text="eolW"></div><div class="stat-label">EOL Warnings</div></div>
       </div>
+      <div class="alert as" x-show="_fixMsg" x-text="_fixMsg" style="margin-bottom:8px"></div>
       <!-- Network health warnings -->
       <div x-show="netHealth.length>0" style="margin-bottom:8px">
         <template x-for="n in netHealth" :key="n.name">
@@ -1122,7 +1123,7 @@ auth:false,lf:{u:'',p:''},le:'',ll:false,
 pg:'dash',ver:'',plat:'',dark:true,q:'',ar:false,_art:null,
 cs:[],ld:{},
 eolR:[],eolS:{},eolW:0,
-drift:{},snaps:[],snapD:null,snapMsg:'',snapErr:false,driftResetOk:'',snapUTC:false,notifTestMsg:'',imp:{yaml:'',preview:null,results:null,err:'',overwrite:false,filename:''},pw:{cur:'',usr:'',new1:'',new2:'',err:'',ok:''},sett:null,dmn:null,clone:{src:'',name:'',ip:'',envK:'',envV:'',envOverrides:[],preview:'',result:null,err:''},hist:[],driftIgnored:[],imgs:[],imgPull:'',netHealth:[],netHealth:[],
+drift:{},snaps:[],snapD:null,snapMsg:'',snapErr:false,driftResetOk:'',snapUTC:false,notifTestMsg:'',imp:{yaml:'',preview:null,results:null,err:'',overwrite:false,filename:''},pw:{cur:'',usr:'',new1:'',new2:'',err:'',ok:''},sett:null,dmn:null,clone:{src:'',name:'',ip:'',envK:'',envV:'',envOverrides:[],preview:'',result:null,err:''},hist:[],driftIgnored:[],imgs:[],imgPull:'',netHealth:[],_fixMsg:'',netHealth:[],_fixMsg:'',
 us:1,sel:[],drr:[],drs:{},ulog:[],usum:{},sid:null,
 pc:null,pr:null,
 expSel:[],expFmt:'dam-yaml',
@@ -1521,9 +1522,12 @@ async fixNetwork(name){
   try{
     const d=await this.api('/api/network/fix/'+name,{method:'POST'});
     if(d&&d.ok){
-      await this.checkNetHealth();
+      // Remove from health warnings immediately — don't wait for re-scan
+      this.netHealth=this.netHealth.filter(n=>n.name!==name);
       await this.loadC();
-      alert('\u2713 '+name+' recreated on '+d.network+(d.ip?' ('+d.ip+')':''));
+      // Show success inline instead of alert
+      this._fixMsg='\u2713 '+name+' recreated on '+d.network+(d.ip?' ('+d.ip+')':'');
+      setTimeout(()=>this._fixMsg='',5000);
     }else{alert('Fix failed: '+(d&&d.detail||'unknown'));}
   }catch(e){alert(e.message);}
 },
