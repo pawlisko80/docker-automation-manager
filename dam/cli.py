@@ -79,11 +79,31 @@ def _load_context(config: Optional[str]):
 @click.option("--port", default=8080, type=int, help="Web UI port (default: 8080)")
 @click.option("--web-passwd", is_flag=True, help="Set web UI username and password")
 @click.option("--install-daemon", is_flag=True, help="Install DAM as a scheduled daemon")
+@click.option("--snapshot", is_flag=True, help="Take a snapshot of current container state")
+@click.option("--snapshots", is_flag=True, help="List all saved snapshots")
+@click.option("--rollback", default=None, type=int, metavar="N", help="Rollback to snapshot N (0=latest)")
+@click.option("--images", is_flag=True, help="List all Docker images with status")
+@click.option("--clone", default=None, metavar="SRC", help="Clone container SRC")
+@click.option("--clone-name", default=None, help="New name for cloned container")
+@click.option("--clone-ip", default=None, help="New IP address for cloned container")
+@click.option("--clone-mac", default=None, help="New MAC address (or 'auto' to generate)")
+@click.option("--history", is_flag=True, help="Show update history")
+@click.option("--approvals", is_flag=True, help="List pending update approvals")
+@click.option("--approve", default=None, metavar="NAME", help="Approve pending update for container")
+@click.option("--reject", default=None, metavar="NAME", help="Reject pending update for container")
+@click.option("--network-health", is_flag=True, help="Check for containers with network issues")
+@click.option("--network-fix", default=None, metavar="NAME", help="Recreate container with correct network")
+@click.option("--notify-test", is_flag=True, help="Send a test notification")
+@click.option("--policy", default=None, metavar="NAME:POLICY",
+              help="Set update policy: name:auto|notify|approve|hold")
 @click.option("--version", is_flag=True, help="Print version and exit")
 @click.pass_context
 def cli(ctx, config, status, update, drift, prune, dry_run, yes, all,
         container, install_daemon, export, import_file, eol_check,
-        fmt, output, migrate, web, host, port, web_passwd, version):
+        fmt, output, migrate, web, host, port, web_passwd,
+        snapshot, snapshots, rollback, images, clone, clone_name, clone_ip, clone_mac,
+        history, approvals, approve, reject, network_health, network_fix,
+        notify_test, policy, version):
     """Docker Automation Manager — container lifecycle management."""
 
     if version:
@@ -94,6 +114,9 @@ def cli(ctx, config, status, update, drift, prune, dry_run, yes, all,
     # If any action flag is set, run headless
     any_action = web or web_passwd or status or update or drift or prune
     any_action = any_action or install_daemon or export or import_file or eol_check or migrate
+    any_action = any_action or snapshot or snapshots or (rollback is not None) or images
+    any_action = any_action or clone or history or approvals or approve or reject
+    any_action = any_action or network_health or network_fix or notify_test or policy
     if any_action:
         ctx.ensure_object(dict)
         ctx.obj["config"] = config
@@ -128,6 +151,33 @@ def cli(ctx, config, status, update, drift, prune, dry_run, yes, all,
             _cmd_import(config, file_path=import_file, dry_run=dry_run, yes=yes)
         if eol_check:
             _cmd_eol_check(config)
+        if snapshot:
+            _cmd_snapshot(config)
+        if snapshots:
+            _cmd_list_snapshots(config)
+        if rollback is not None:
+            _cmd_rollback(config, index=rollback, yes=yes)
+        if images:
+            _cmd_images(config)
+        if clone:
+            _cmd_clone(config, source=clone, new_name=clone_name,
+                       new_ip=clone_ip, new_mac=clone_mac, dry_run=dry_run, yes=yes)
+        if history:
+            _cmd_history(config)
+        if approvals:
+            _cmd_approvals(config)
+        if approve:
+            _cmd_approve(config, container_name=approve)
+        if reject:
+            _cmd_reject(config, container_name=reject)
+        if network_health:
+            _cmd_network_health(config)
+        if network_fix:
+            _cmd_network_fix(config, container_name=network_fix, yes=yes)
+        if notify_test:
+            _cmd_notify_test(config)
+        if policy:
+            _cmd_set_policy(config, policy_spec=policy)
         if web:
             _cmd_web(config, host=host, port=port)
         return
@@ -736,6 +786,303 @@ def _cmd_set_web_passwd(config) -> None:
     console.print(f"[dim]Saved to {cfg_path}[/dim]")
     console.print()
     console.print("Start web UI with: [cyan]dam --web[/cyan]")
+
+
+def _cmd_snapshot(config) -> None:
+    """Take a manual snapshot of current container state."""
+    platform, settings, _ = _load_context(config)
+    from dam.core.inspector import Inspector
+    from dam.core.snapshot import SnapshotManager
+    inspector = Inspector(platform)
+    configs = inspector.inspect_all(settings_containers=settings.get("containers", {}) or {})
+    snap_dir = Path(__file__).parent.parent / "snapshots"
+    mgr = SnapshotManager(snapshot_dir=snap_dir)
+    path = mgr.save(configs, platform, label="cli-manual")
+    console.print(f"[green]✓[/green] Snapshot saved: {path.name}")
+
+
+def _cmd_list_snapshots(config) -> None:
+    """List saved snapshots."""
+    from dam.core.snapshot import SnapshotManager
+    snap_dir = Path(__file__).parent.parent / "snapshots"
+    mgr = SnapshotManager(snapshot_dir=snap_dir)
+    snaps = mgr.list_snapshots()
+    if not snaps:
+        console.print("[dim]No snapshots found.[/dim]")
+        return
+    from rich.table import Table
+    t = Table("N", "Filename", "Size", show_header=True, header_style="bold")
+    for i, s in enumerate(snaps):
+        t.add_row(str(i), s.name, f"{s.stat().st_size // 1024} KB")
+    console.print(t)
+
+
+def _cmd_rollback(config, index: int = 0, yes: bool = False) -> None:
+    """Rollback containers to a saved snapshot."""
+    platform, settings, _ = _load_context(config)
+    from dam.core.snapshot import SnapshotManager
+    from dam.core.updater import Updater
+    snap_dir = Path(__file__).parent.parent / "snapshots"
+    mgr = SnapshotManager(snapshot_dir=snap_dir)
+    snaps = mgr.list_snapshots()
+    if not snaps or index >= len(snaps):
+        console.print(f"[red]Snapshot {index} not found.[/red]")
+        return
+    snap_name = snaps[index].name
+    if not yes:
+        console.print(f"[yellow]Roll back ALL containers to snapshot: {snap_name}?[/yellow]")
+        if not click.confirm("Proceed?"):
+            return
+    result = mgr.load(snaps[index])
+    if not result:
+        console.print("[red]Could not load snapshot.[/red]")
+        return
+    _, snap_configs = result
+    updater = Updater(platform=platform, dry_run=False,
+                      recreate_delay=settings.get("dam", {}).get("recreate_delay", 5))
+    for cfg in snap_configs:
+        try:
+            updater._recreate(cfg, cfg.image)
+            console.print(f"[green]✓[/green] {cfg.name}")
+        except Exception as e:
+            console.print(f"[red]✗[/red] {cfg.name}: {e}")
+
+
+def _cmd_images(config) -> None:
+    """List all Docker images with status."""
+    platform, _, _ = _load_context(config)
+    import docker
+    client = docker.from_env()
+    in_use_ids = set()
+    in_use_tags = set()
+    for c in client.containers.list(all=True):
+        try:
+            in_use_ids.add(c.attrs.get("Image", ""))
+            cfg_img = c.attrs.get("Config", {}).get("Image", "")
+            if ":" not in cfg_img.split("/")[-1]:
+                cfg_img += ":latest"
+            in_use_tags.add(cfg_img)
+        except Exception:
+            pass
+    from rich.table import Table
+    t = Table("Image", "ID", "Size", "Status", show_header=True, header_style="bold")
+    for img in client.images.list(all=False):
+        tags = img.tags or ["<none>:<none>"]
+        in_use = img.id in in_use_ids or any(tg in in_use_tags for tg in tags)
+        dangling = not img.tags
+        size = f"{img.attrs.get('Size', 0) // 1024 // 1024} MB"
+        status = "in use" if in_use else ("dangling" if dangling else "unused")
+        style = "green" if in_use else ("dim" if dangling else "yellow")
+        t.add_row(tags[0], img.short_id, size, f"[{style}]{status}[/{style}]")
+    console.print(t)
+
+
+def _cmd_clone(config, source: str, new_name: str = None, new_ip: str = None,
+               new_mac: str = None, dry_run: bool = False, yes: bool = False) -> None:
+    """Clone a container with optional overrides."""
+    platform, settings, _ = _load_context(config)
+    if not new_name:
+        new_name = click.prompt("New container name")
+    from dam.core.inspector import Inspector, generate_mac
+    from dam.core.updater import _build_run_kwargs
+    import docker
+    import copy
+    inspector = Inspector(platform)
+    all_cfgs = inspector.inspect_all(settings_containers=settings.get("containers", {}) or {})
+    src_cfg = next((c for c in all_cfgs if c.name == source), None)
+    if not src_cfg:
+        console.print(f"[red]Container '{source}' not found.[/red]")
+        return
+    cfg = copy.deepcopy(src_cfg)
+    cfg.name = new_name
+    if new_ip and cfg.networks:
+        for net in cfg.networks:
+            if net.is_static:
+                net.ip_address = new_ip
+    cfg.mac_address = new_mac if new_mac and new_mac != "auto" else generate_mac()
+    console.print(f"Source:   [cyan]{source}[/cyan]")
+    console.print(f"Clone:    [cyan]{new_name}[/cyan]")
+    console.print(f"MAC:      [dim]{cfg.mac_address}[/dim]")
+    if new_ip:
+        console.print(f"IP:       [dim]{new_ip}[/dim]")
+    if dry_run:
+        console.print("[dim]Dry run — no changes made.[/dim]")
+        return
+    if not yes and not click.confirm("Create clone?"):
+        return
+    try:
+        client = docker.from_env()
+        run_kwargs = _build_run_kwargs(cfg)
+        run_kwargs["name"] = new_name
+        run_kwargs["detach"] = True
+        container = client.containers.run(**run_kwargs)
+        console.print(f"[green]✓[/green] Clone created: {new_name} ({container.short_id})")
+    except Exception as e:
+        console.print(f"[red]Clone failed:[/red] {e}")
+
+
+def _cmd_history(config) -> None:
+    """Show update run history."""
+    cfg_path = Path(config) if config else Path("config/settings.yaml")
+    history_file = cfg_path.parent / ".update_history.json"
+    if not history_file.exists():
+        console.print("[dim]No update history found.[/dim]")
+        return
+    import json
+    history = json.loads(history_file.read_text())
+    for run in history[:10]:
+        updated = run.get("updated", 0)
+        failed = run.get("failed", 0)
+        ts = run.get("timestamp", "")
+        color = "green" if failed == 0 else "yellow"
+        console.print(
+            f"[{color}]{ts}[/{color}] — {updated} updated, {failed} failed, "
+            f"{run.get('skipped', 0)} unchanged"
+        )
+        for r in run.get("results", []):
+            if r.get("status") != "skipped":
+                status_color = "green" if r["status"] == "updated" else "red"
+                console.print(f"  [{status_color}]{r['name']}[/{status_color}]: {r['status']}")
+
+
+def _cmd_approvals(config) -> None:
+    """List pending update approvals."""
+    cfg_path = Path(config) if config else Path("config/settings.yaml")
+    from dam.core.approval import ApprovalQueue
+    queue = ApprovalQueue(cfg_path.parent / ".approval_queue.json")
+    pending = queue.get_pending()
+    if not pending:
+        console.print("[green]✓[/green] No pending approvals.")
+        return
+    from rich.table import Table
+    t = Table("Container", "Image", "Detected", "Status", show_header=True, header_style="bold")
+    for item in queue.get_all():
+        color = {"pending": "yellow", "approved": "green",
+                 "rejected": "red", "applied": "dim"}.get(item.status, "white")
+        t.add_row(item.container_name, item.image,
+                  item.detected_at[:16], f"[{color}]{item.status}[/{color}]")
+    console.print(t)
+
+
+def _cmd_approve(config, container_name: str) -> None:
+    """Approve a pending update."""
+    cfg_path = Path(config) if config else Path("config/settings.yaml")
+    from dam.core.approval import ApprovalQueue
+    queue = ApprovalQueue(cfg_path.parent / ".approval_queue.json")
+    item = queue.approve(container_name)
+    if item:
+        console.print(f"[green]✓[/green] Approved update for {container_name}")
+    else:
+        console.print(f"[red]No pending update found for '{container_name}'[/red]")
+
+
+def _cmd_reject(config, container_name: str) -> None:
+    """Reject a pending update."""
+    cfg_path = Path(config) if config else Path("config/settings.yaml")
+    from dam.core.approval import ApprovalQueue
+    queue = ApprovalQueue(cfg_path.parent / ".approval_queue.json")
+    item = queue.reject(container_name)
+    if item:
+        console.print(f"[yellow]✗[/yellow] Rejected update for {container_name}")
+    else:
+        console.print(f"[red]No pending update found for '{container_name}'[/red]")
+
+
+def _cmd_network_health(config) -> None:
+    """Check for containers with network issues."""
+    import docker
+    client = docker.from_env()
+    found = False
+    for c in client.containers.list(all=True):
+        try:
+            hc = c.attrs.get("HostConfig", {})
+            nets = c.attrs.get("NetworkSettings", {}).get("Networks", {})
+            mode = hc.get("NetworkMode", "")
+            real_nets = {k: v for k, v in nets.items() if k != "none"}
+            if mode == "none" and real_nets:
+                net = next(iter(real_nets))
+                ip = (real_nets[net].get("IPAMConfig") or {}).get("IPv4Address", "")
+                console.print(
+                    f"[yellow]⚠[/yellow] {c.name}: started on 'none', "
+                    f"reconnected to {net}" + (f" ({ip})" if ip else "") +
+                    " — recreate needed"
+                )
+                found = True
+            elif mode == "none" and not real_nets:
+                console.print(f"[red]✗[/red] {c.name}: stuck on 'none' network")
+                found = True
+        except Exception:
+            pass
+    if not found:
+        console.print("[green]✓[/green] All containers have correct network config.")
+
+
+def _cmd_network_fix(config, container_name: str, yes: bool = False) -> None:
+    """Recreate a container with correct network from startup."""
+    platform, settings, _ = _load_context(config)
+    from dam.core.inspector import Inspector
+    from dam.core.updater import Updater
+    inspector = Inspector(platform)
+    all_cfgs = inspector.inspect_all(settings_containers=settings.get("containers", {}) or {})
+    cfg = next((c for c in all_cfgs if c.name == container_name), None)
+    if not cfg:
+        console.print(f"[red]Container '{container_name}' not found.[/red]")
+        return
+    if not yes and not click.confirm(
+            f"Recreate {container_name} with network {cfg.network_mode}?"):
+        return
+    updater = Updater(platform=platform, dry_run=False,
+                      recreate_delay=settings.get("dam", {}).get("recreate_delay", 5))
+    try:
+        updater._recreate(cfg, cfg.image)
+        console.print(
+            f"[green]✓[/green] {container_name} recreated on {cfg.network_mode}"
+            + (f" ({cfg.primary_ip()})" if cfg.primary_ip() else "")
+        )
+    except Exception as e:
+        console.print(f"[red]Fix failed:[/red] {e}")
+
+
+def _cmd_notify_test(config) -> None:
+    """Send a test notification."""
+    _, settings, _ = _load_context(config)
+    from dam.core.notifier import Notifier, NotificationConfig
+    notif = Notifier(NotificationConfig.from_settings(settings))
+    if not notif.cfg.enabled:
+        console.print("[yellow]Notifications are disabled in settings.[/yellow]")
+        return
+    ok = notif.test()
+    if ok:
+        console.print("[green]✓[/green] Test notification sent successfully.")
+    else:
+        console.print("[red]✗[/red] Test notification failed — check your config.")
+
+
+def _cmd_set_policy(config, policy_spec: str) -> None:
+    """Set update policy for a container. Format: name:policy"""
+    from dam.core.approval import POLICIES
+    import yaml as _yaml
+    if ":" not in policy_spec:
+        console.print("[red]Format: --policy container_name:policy[/red]")
+        console.print(f"Valid policies: {', '.join(POLICIES)}")
+        return
+    name, policy = policy_spec.split(":", 1)
+    if policy not in POLICIES:
+        console.print(f"[red]Invalid policy '{policy}'.[/red] Valid: {', '.join(POLICIES)}")
+        return
+    cfg_path = Path(config) if config else Path("config/settings.yaml")
+    if cfg_path.exists():
+        settings = _yaml.safe_load(cfg_path.read_text()) or {}
+    else:
+        settings = {}
+    if "containers" not in settings:
+        settings["containers"] = {}
+    if name not in settings["containers"]:
+        settings["containers"][name] = {}
+    settings["containers"][name]["update_policy"] = policy
+    cfg_path.parent.mkdir(parents=True, exist_ok=True)
+    cfg_path.write_text(_yaml.dump(settings, default_flow_style=False))
+    console.print(f"[green]✓[/green] {name}: update_policy = {policy}")
 
 
 def main():
