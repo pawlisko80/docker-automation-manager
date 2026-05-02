@@ -119,6 +119,9 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
       <div class="nav-item" :class="{active:pg==='prune'}" @click="go('prune')">🗑 Prune</div>
       <div class="nav-item" :class="{active:pg==='export'}" @click="go('export')">📤 Export</div>
       <div class="nav-item" :class="{active:pg==='snaps'}" @click="go('snaps')">📷 Snapshots</div>
+      <div class="nav-item" :class="{active:pg==='backup'}" @click="go('backup')" style="font-weight:600">
+        💾 Backup
+      </div>
       <div class="nav-item" :class="{active:pg==='images'}" @click="go('images')">🖼 Images</div>
       <div class="nav-item" :class="{active:pg==='import'}" @click="go('import')">📥 Import</div>
       <div class="nav-sep"></div>
@@ -444,6 +447,94 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
     </div>
 
     <!-- EXPORT -->
+    <!-- BACKUP PAGE -->
+    <div x-show="pg==='backup'">
+      <div class="page-title">💾 Backup</div>
+      <div class="alert ai" style="margin-bottom:16px;font-size:13px;line-height:1.7">
+        <strong>Backup saves the full configuration of all your containers</strong> — image names, networks, IPs,
+        MAC addresses, ports, volumes, environment variables, restart policies, and labels.<br>
+        Use it to <strong>restore after a failure</strong>, <strong>migrate to a new server</strong>,
+        or just keep a safe copy of your setup.
+      </div>
+
+      <!-- Quick Backup -->
+      <div class="card" style="margin-bottom:12px">
+        <div class="card-title">⚡ Quick Backup — All Containers</div>
+        <div class="dim" style="font-size:13px;margin-bottom:16px">
+          Downloads a <code>.dam.yaml</code> file with every container's full config.
+          You can re-import this file on any machine running DAM to restore your entire setup.
+        </div>
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-p" @click="doBackupAll()" :disabled="ld.bkp===true">
+            <span x-show="ld.bkp" class="spin"></span>
+            💾 Download Full Backup
+          </button>
+          <span class="dim" style="font-size:12px" x-show="backupMsg" x-text="backupMsg"></span>
+        </div>
+      </div>
+
+      <!-- Selective Backup -->
+      <div class="card" style="margin-bottom:12px">
+        <div class="card-title">🔍 Select Containers to Back Up</div>
+        <div class="dim" style="font-size:12px;margin-bottom:12px">Choose specific containers if you don't need everything.</div>
+        <div class="crow mb16">
+          <input type="checkbox" id="bka" @change="togBackup($event)">
+          <label for="bka" style="cursor:pointer;margin:0;font-weight:600">Select all</label>
+        </div>
+        <template x-for="c in cs" :key="c.name">
+          <div class="crow">
+            <input type="checkbox" :id="'bk-'+c.name" :value="c.name" x-model="bkpSel">
+            <label :for="'bk-'+c.name" style="cursor:pointer;margin:0">
+              <span x-text="c.name"></span>
+              <span class="dim" style="font-size:11px;margin-left:8px" x-text="c.image"></span>
+            </label>
+          </div>
+        </template>
+        <div style="margin-top:16px;display:flex;gap:12px;flex-wrap:wrap">
+          <button class="btn btn-p" @click="doBackupSel()" :disabled="ld.bkp===true||bkpSel.length===0">
+            <span x-show="ld.bkp" class="spin"></span>
+            💾 Download Selected Backup
+          </button>
+        </div>
+      </div>
+
+      <!-- What's included -->
+      <div class="card" style="margin-bottom:12px">
+        <div class="card-title">📋 What's included in a backup?</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:13px">
+          <div>✓ Container name &amp; image</div>
+          <div>✓ Networks &amp; static IPs</div>
+          <div>✓ MAC addresses</div>
+          <div>✓ Port mappings</div>
+          <div>✓ Volume mounts</div>
+          <div>✓ Environment variables</div>
+          <div>✓ Restart policy</div>
+          <div>✓ Labels &amp; capabilities</div>
+          <div>✓ Update policies</div>
+        </div>
+        <div class="alert aw" style="margin-top:12px;font-size:12px">
+          ⚠ Volume <strong>data</strong> (files inside volumes) is <strong>not</strong> included — only the mount paths.
+          For full data backup use <strong>Export → Migration</strong> which includes volume archives.
+        </div>
+      </div>
+
+      <!-- Restore instructions -->
+      <div class="card">
+        <div class="card-title">🔄 How to restore from backup</div>
+        <div style="font-size:13px;line-height:1.8">
+          <strong>1.</strong> Go to <strong>Import</strong> in the menu<br>
+          <strong>2.</strong> Choose your <code>.dam.yaml</code> backup file<br>
+          <strong>3.</strong> Review the container list — edit IPs, networks, or MACs if the new server is different<br>
+          <strong>4.</strong> Click <strong>Import</strong> to recreate all containers<br><br>
+          Need volume data too? Use <strong>Export → Migration</strong> instead — it bundles config + volume data into a single zip.
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px">
+          <button class="btn btn-s" @click="go('import')">→ Go to Import</button>
+          <button class="btn btn-s" @click="go('export')">→ Advanced Export Options</button>
+        </div>
+      </div>
+    </div>
+
     <div x-show="pg==='export'">
       <div class="page-title">Export Containers</div>
       <div class="card">
@@ -1291,7 +1382,7 @@ auth:false,lf:{u:'',p:''},le:'',ll:false,
 pg:'dash',ver:'',plat:'',dark:true,q:'',ar:false,_art:null,
 cs:[],ld:{},
 eolR:[],eolS:{},eolW:0,
-drift:{},snaps:[],snapD:null,snapMsg:'',snapErr:false,driftResetOk:'',snapUTC:false,notifTestMsg:'',imp:{yaml:'',preview:null,results:null,err:'',overwrite:false,filename:'',macActions:{}},pw:{cur:'',usr:'',new1:'',new2:'',err:'',ok:''},sett:null,dmn:null,clone:{src:'',name:'',ip:'',mac:'',envK:'',envV:'',envOverrides:[],preview:'',result:null,err:''},hist:[],driftIgnored:[],imgs:[],imgPull:'',netHealth:[],_fixMsg:'',approvals:{pending:[],all:[]},netHealth:[],_fixMsg:'',approvals:{pending:[],all:[]},
+drift:{},snaps:[],snapD:null,snapMsg:'',snapErr:false,driftResetOk:'',snapUTC:false,notifTestMsg:'',imp:{yaml:'',preview:null,results:null,err:'',overwrite:false,filename:'',macActions:{}},pw:{cur:'',usr:'',new1:'',new2:'',err:'',ok:''},sett:null,dmn:null,clone:{src:'',name:'',ip:'',mac:'',envK:'',envV:'',envOverrides:[],preview:'',result:null,err:''},hist:[],driftIgnored:[],imgs:[],imgPull:'',netHealth:[],_fixMsg:'',approvals:{pending:[],all:[]},bkpSel:[],backupMsg:'',netHealth:[],_fixMsg:'',approvals:{pending:[],all:[]},bkpSel:[],backupMsg:'',
 us:1,sel:[],drr:[],drs:{},ulog:[],usum:{},sid:null,
 pc:null,pr:null,
 expSel:[],expFmt:'dam-yaml',
@@ -1354,6 +1445,7 @@ go(p){
   if(p==='update'){this.us=1;this.loadC();}
   if(p==='prune'){this.pc=null;this.pr=null;}
   if(p==='export')this.loadC();
+  if(p==='backup')this.loadC();
   if(p==='selfupd')this.chkDv();
   if(p==='settings')this.loadSettings();
   if(p==='daemon')this.loadDaemon();
@@ -1680,6 +1772,44 @@ async doDeleteImage(img){
     else alert('Remove failed: '+(d&&d.detail||'unknown'));
   }catch(e){alert(e.message);}
   finally{this.ld.imgdel=false;}
+},
+async doBackupAll(){
+  this.ld.bkp=true; this.backupMsg='';
+  try{
+    const r=await fetch('/api/export',{method:'POST',credentials:'include',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({containers:this.cs.map(c=>c.name),fmt:'dam-yaml'})});
+    if(!r.ok){alert('Backup failed');return;}
+    const cd=r.headers.get('Content-Disposition')||'';
+    const fn=(cd.match(/filename="([^"]+)"/)|| [])[1]||'dam-backup.yaml';
+    const blob=await r.blob();
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);a.download=fn;a.click();
+    this.backupMsg='✓ Backup downloaded: '+fn;
+    setTimeout(()=>this.backupMsg='',6000);
+  }catch(e){alert(e.message);}
+  finally{this.ld.bkp=false;}
+},
+async doBackupSel(){
+  this.ld.bkp=true; this.backupMsg='';
+  try{
+    const r=await fetch('/api/export',{method:'POST',credentials:'include',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({containers:this.bkpSel,fmt:'dam-yaml'})});
+    if(!r.ok){alert('Backup failed');return;}
+    const cd=r.headers.get('Content-Disposition')||'';
+    const fn=(cd.match(/filename="([^"]+)"/)|| [])[1]||'dam-backup.yaml';
+    const blob=await r.blob();
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);a.download=fn;a.click();
+    this.backupMsg='✓ Backup downloaded: '+fn;
+    setTimeout(()=>this.backupMsg='',6000);
+  }catch(e){alert(e.message);}
+  finally{this.ld.bkp=false;}
+},
+togBackup(e){
+  if(e.target.checked)this.bkpSel=this.cs.map(c=>c.name);
+  else this.bkpSel=[];
 },
 async loadApprovals(){
   try{

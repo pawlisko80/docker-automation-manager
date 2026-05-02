@@ -79,6 +79,7 @@ def _load_context(config: Optional[str]):
 @click.option("--port", default=8080, type=int, help="Web UI port (default: 8080)")
 @click.option("--web-passwd", is_flag=True, help="Set web UI username and password")
 @click.option("--install-daemon", is_flag=True, help="Install DAM as a scheduled daemon")
+@click.option("--backup", is_flag=True, help="Backup all container configs to DAM YAML")
 @click.option("--snapshot", is_flag=True, help="Take a snapshot of current container state")
 @click.option("--snapshots", is_flag=True, help="List all saved snapshots")
 @click.option("--rollback", default=None, type=int, metavar="N", help="Rollback to snapshot N (0=latest)")
@@ -101,7 +102,7 @@ def _load_context(config: Optional[str]):
 def cli(ctx, config, status, update, drift, prune, dry_run, yes, all,
         container, install_daemon, export, import_file, eol_check,
         fmt, output, migrate, web, host, port, web_passwd,
-        snapshot, snapshots, rollback, images, clone, clone_name, clone_ip, clone_mac,
+        backup, snapshot, snapshots, rollback, images, clone, clone_name, clone_ip, clone_mac,
         history, approvals, approve, reject, network_health, network_fix,
         notify_test, policy, version):
     """Docker Automation Manager — container lifecycle management."""
@@ -114,7 +115,7 @@ def cli(ctx, config, status, update, drift, prune, dry_run, yes, all,
     # If any action flag is set, run headless
     any_action = web or web_passwd or status or update or drift or prune
     any_action = any_action or install_daemon or export or import_file or eol_check or migrate
-    any_action = any_action or snapshot or snapshots or (rollback is not None) or images
+    any_action = any_action or backup or snapshot or snapshots or (rollback is not None) or images
     any_action = any_action or clone or history or approvals or approve or reject
     any_action = any_action or network_health or network_fix or notify_test or policy
     if any_action:
@@ -151,6 +152,8 @@ def cli(ctx, config, status, update, drift, prune, dry_run, yes, all,
             _cmd_import(config, file_path=import_file, dry_run=dry_run, yes=yes)
         if eol_check:
             _cmd_eol_check(config)
+        if backup:
+            _cmd_backup(config, output=output)
         if snapshot:
             _cmd_snapshot(config)
         if snapshots:
@@ -786,6 +789,26 @@ def _cmd_set_web_passwd(config) -> None:
     console.print(f"[dim]Saved to {cfg_path}[/dim]")
     console.print()
     console.print("Start web UI with: [cyan]dam --web[/cyan]")
+
+
+def _cmd_backup(config, output: str = None) -> None:
+    """Backup all container configs to a DAM YAML file."""
+    import datetime
+    platform, settings, _ = _load_context(config)
+    from dam.core.inspector import Inspector
+    from dam.core.exporter import Exporter
+    inspector = Inspector(platform)
+    configs = inspector.inspect_all(settings_containers=settings.get("containers", {}) or {})
+    exporter = Exporter(platform)
+    out_dir = Path(output) if output else Path(".")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    out_file = out_dir / f"dam-backup-{ts}.yaml"
+    yaml_content = exporter.to_yaml(configs)
+    out_file.write_text(yaml_content)
+    console.print(f"[green]✓[/green] Backup saved: [bold]{out_file}[/bold]")
+    console.print(f"  {len(configs)} container(s) backed up")
+    console.print(f"  [dim]Restore with:[/dim] dam --import-file {out_file}")
 
 
 def _cmd_snapshot(config) -> None:
