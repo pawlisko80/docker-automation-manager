@@ -58,6 +58,8 @@ class Notifier:
                 return self._send_ntfy(title, message, priority, tags or [])
             elif self.cfg.provider == "webhook":
                 return self._send_webhook(title, message)
+            elif self.cfg.provider == "email":
+                return self._send_email(title, message)
             else:
                 logger.warning("Unknown notification provider: %s", self.cfg.provider)
                 return False
@@ -80,6 +82,36 @@ class Notifier:
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
             return resp.status < 400
+
+    def _send_email(self, title: str, message: str) -> bool:
+        """Send notification via SMTP email."""
+        if not self.cfg.smtp_host or not self.cfg.smtp_to:
+            return False
+        import smtplib
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
+        msg = MIMEMultipart()
+        msg["Subject"] = f"[DAM] {title}"
+        msg["From"] = self.cfg.smtp_from or self.cfg.smtp_user
+        msg["To"] = self.cfg.smtp_to
+        body = title + "\n\n" + message + "\n\n-- Docker Automation Manager"
+        msg.attach(MIMEText(body, "plain"))
+        try:
+            if self.cfg.smtp_tls:
+                with smtplib.SMTP(self.cfg.smtp_host, self.cfg.smtp_port, timeout=15) as s:
+                    s.starttls()
+                    if self.cfg.smtp_user:
+                        s.login(self.cfg.smtp_user, self.cfg.smtp_password)
+                    s.send_message(msg)
+            else:
+                with smtplib.SMTP(self.cfg.smtp_host, self.cfg.smtp_port, timeout=15) as s:
+                    if self.cfg.smtp_user:
+                        s.login(self.cfg.smtp_user, self.cfg.smtp_password)
+                    s.send_message(msg)
+            return True
+        except Exception as e:
+            logger.warning("Email send failed: %s", e)
+            return False
 
     def _send_webhook(self, title: str, message: str) -> bool:
         if not self.cfg.webhook_url:

@@ -104,6 +104,9 @@ async def startup():
     global _history_file
     _history_file = cfg_path.parent / ".update_history.json"
     _load_history()
+    global _approval_queue
+    from dam.core.approval import ApprovalQueue
+    _approval_queue = ApprovalQueue(cfg_path.parent / ".approval_queue.json")
     _snapshot_manager = SnapshotManager(retention=_settings.get("dam", {}).get("snapshot_retention", 10))
 
 
@@ -477,6 +480,7 @@ async def get_snapshot(snapshot_id: int, _=Depends(require_auth)):
 
 _drift_ignored: set = set()  # container names to ignore in drift
 _update_history: list = []   # recent update runs
+_approval_queue = None       # ApprovalQueue instance
 _UPDATE_HISTORY_MAX = 50     # keep last 50 runs
 _history_file: Optional[Path] = None
 
@@ -515,6 +519,80 @@ async def drift_unignore(container_name: str, _=Depends(require_auth)):
     """Remove a container from the drift ignore list."""
     _drift_ignored.discard(container_name)
     return {"ok": True, "ignored": sorted(_drift_ignored)}
+
+
+@app.get("/api/approvals")
+async def get_approvals(_=Depends(require_auth)):
+    """Get all pending and recent approval items."""
+    if _approval_queue is None:
+        return {"pending": [], "all": []}
+    return {
+        "pending": [i.to_dict() for i in _approval_queue.get_pending()],
+        "all": [i.to_dict() for i in _approval_queue.get_all()],
+    }
+
+
+@app.post("/api/approvals/{container_name}/approve")
+async def approve_update(container_name: str, _=Depends(require_auth)):
+    """Approve a pending update."""
+    if _approval_queue is None:
+        raise HTTPException(status_code=503, detail="Approval queue not initialized")
+    item = _approval_queue.approve(container_name)
+    if not item:
+        raise HTTPException(status_code=404, detail="No pending update for " + container_name)
+    return {"ok": True, "item": item.to_dict()}
+
+
+@app.post("/api/approvals/{container_name}/reject")
+async def reject_update(container_name: str, _=Depends(require_auth)):
+    """Reject a pending update."""
+    if _approval_queue is None:
+        raise HTTPException(status_code=503, detail="Approval queue not initialized")
+    item = _approval_queue.reject(container_name)
+    if not item:
+        raise HTTPException(status_code=404, detail="No pending update for " + container_name)
+    return {"ok": True, "item": item.to_dict()}
+
+
+@app.post("/api/approvals/{container_name}/apply")
+async def apply_approved_update(container_name: str, _=Depends(require_auth)):
+    """Apply an approved update immediately."""
+    if _approval_queue is None:
+        raise HTTPException(status_code=503, detail="Approval queue not initialized")
+    approved = next(
+        (i for i in _approval_queue.get_all()
+         if i.container_name == container_name and i.status == "approved"),
+        None
+    )
+    if not approved:
+        raise HTTPException(status_code=404,
+                            detail="No approved update for " + container_name)
+    try:
+        inspector = Inspector(_platform)
+        all_cfgs = inspector.inspect_all(settings_containers=_settings.get("containers", {}) or {})
+        cfg = next((c for c in all_cfgs if c.name == container_name), None)
+        if not cfg:
+            raise HTTPException(status_code=404, detail="Container not found")
+        dam_cfg = _settings.get("dam", {})
+        updater = Updater(platform=_platform, dry_run=False,
+                          recreate_delay=dam_cfg.get("recreate_delay", 5))
+        r = updater.update_one(cfg)
+        if r.status.value == "updated":
+            _approval_queue.mark_applied(container_name)
+        return {"ok": True, "status": r.status.value, "error": r.error}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/approvals/clear")
+async def clear_approvals(_=Depends(require_auth)):
+    """Clear applied and rejected items from the queue."""
+    if _approval_queue is None:
+        return {"ok": True, "cleared": 0}
+    cleared = _approval_queue.clear_applied()
+    return {"ok": True, "cleared": cleared}
 
 
 @app.get("/api/update/history")
@@ -589,6 +667,9 @@ async def update_run(req: UpdateRequest, _=Depends(require_auth)):
             updater = Updater(platform=_platform, dry_run=False,
                               recreate_delay=dam_cfg.get("recreate_delay", 5), progress_callback=on_progress)
             results = []
+            from dam.core.approval import (
+                get_container_policy, in_maintenance_window, PendingUpdate
+            )
             own_name = _settings.get("_own_container_name", "")
             for cfg in configs:
                 if own_name and cfg.name == own_name:
@@ -639,7 +720,81 @@ async def update_run(req: UpdateRequest, _=Depends(require_auth)):
                         duration_seconds=0,
                     )
                 else:
-                    r = updater.update_one(cfg, skip_stale=(own_name and cfg.name == own_name))
+                    policy = get_container_policy(_settings, cfg.name)
+                    # Check maintenance window
+                    if not in_maintenance_window(_settings):
+                        from dam.core.updater import UpdateResult, UpdateStatus
+                        r = UpdateResult(
+                            container_name=cfg.name,
+                            status=UpdateStatus.SKIPPED,
+                            old_image_id=cfg.image_id,
+                            new_image_id=cfg.image_id,
+                            duration_seconds=0,
+                            error="Outside maintenance window",
+                        )
+                    elif policy == "hold":
+                        from dam.core.updater import UpdateResult, UpdateStatus
+                        r = UpdateResult(
+                            container_name=cfg.name,
+                            status=UpdateStatus.SKIPPED,
+                            old_image_id=cfg.image_id,
+                            new_image_id=cfg.image_id,
+                            duration_seconds=0,
+                            error="Update policy: hold",
+                        )
+                    elif policy == "approve" and _approval_queue:
+                        # Check if already approved
+                        approved = next(
+                            (i for i in _approval_queue.get_all()
+                             if i.container_name == cfg.name and i.status == "approved"),
+                            None
+                        )
+                        if not approved:
+                            # Queue for approval and skip
+                            from dam.core.updater import UpdateResult, UpdateStatus, _get_local_digest
+                            import docker as _dk3
+                            try:
+                                new_d = _get_local_digest(_dk3.from_env(), cfg.image) or ""
+                            except Exception:
+                                new_d = ""
+                            _approval_queue.add(PendingUpdate(
+                                container_name=cfg.name,
+                                image=cfg.image,
+                                old_digest=cfg.image_id or "",
+                                new_digest=new_d,
+                            ))
+                            # Notify
+                            try:
+                                from dam.core.notifier import Notifier, NotificationConfig
+                                notif = Notifier(NotificationConfig.from_settings(_settings))
+                                if notif.cfg.enabled and notif.cfg.on_approval_needed:
+                                    notif.send(
+                                        title=f"DAM: Approval needed — {cfg.name}",
+                                        message=(
+                                            f"Container {cfg.name} has a new image available. "
+                                            f"Image: {cfg.image}. "
+                                            "Go to DAM > Approvals to approve or reject."
+                                        ),
+                                        priority="default",
+                                        tags=["hourglass_flowing_sand"],
+                                    )
+                            except Exception:
+                                pass
+                            r = UpdateResult(
+                                container_name=cfg.name,
+                                status=UpdateStatus.SKIPPED,
+                                old_image_id=cfg.image_id,
+                                new_image_id=new_d,
+                                duration_seconds=0,
+                                error="Awaiting approval",
+                            )
+                        else:
+                            # Approved — apply and mark as applied
+                            r = updater.update_one(cfg, skip_stale=(own_name and cfg.name == own_name))
+                            if r.status.value == "updated":
+                                _approval_queue.mark_applied(cfg.name)
+                    else:
+                        r = updater.update_one(cfg, skip_stale=(own_name and cfg.name == own_name))
                 results.append(r)
                 await queue.put(json.dumps({"type": "result", "container": r.container_name,
                                             "status": r.status.value, "error": r.error}))
@@ -1447,6 +1602,16 @@ async def get_settings(_=Depends(require_auth)):
             "notifications_enabled": str(dam_cfg.get("notifications", {}).get("enabled", False)).lower(),
             "notifications_provider": dam_cfg.get("notifications", {}).get("provider", "ntfy"),
             "notifications_url": dam_cfg.get("notifications", {}).get("ntfy_url", ""),
+            "smtp_host": dam_cfg.get("notifications", {}).get("smtp_host", ""),
+            "smtp_port": dam_cfg.get("notifications", {}).get("smtp_port", 587),
+            "smtp_user": dam_cfg.get("notifications", {}).get("smtp_user", ""),
+            "smtp_from": dam_cfg.get("notifications", {}).get("smtp_from", ""),
+            "smtp_to": dam_cfg.get("notifications", {}).get("smtp_to", ""),
+            "smtp_tls": str(dam_cfg.get("notifications", {}).get("smtp_tls", True)).lower(),
+            "maintenance_enabled": str(dam_cfg.get("maintenance_window", {}).get("enabled", False)).lower(),
+            "maintenance_start": dam_cfg.get("maintenance_window", {}).get("start", "02:00"),
+            "maintenance_end": dam_cfg.get("maintenance_window", {}).get("end", "04:00"),
+            "maintenance_weekdays": dam_cfg.get("maintenance_window", {}).get("weekdays", [0, 1, 2, 3, 4, 5, 6]),
         },
         "daemon": {
             "schedule": daemon_cfg.get("schedule", "0 2 1 * *"),
@@ -1467,6 +1632,19 @@ class SettingsUpdateRequest(BaseModel):
     notifications_enabled: Optional[str] = None
     notifications_provider: Optional[str] = None
     notifications_url: Optional[str] = None
+    # Email settings
+    smtp_host: Optional[str] = None
+    smtp_port: Optional[int] = None
+    smtp_user: Optional[str] = None
+    smtp_password: Optional[str] = None
+    smtp_from: Optional[str] = None
+    smtp_to: Optional[str] = None
+    smtp_tls: Optional[str] = None
+    # Maintenance window
+    maintenance_enabled: Optional[str] = None
+    maintenance_start: Optional[str] = None
+    maintenance_end: Optional[str] = None
+    maintenance_weekdays: Optional[list] = None
 
 
 @app.post("/api/settings")

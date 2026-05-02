@@ -11,6 +11,41 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.9.0] — 2026-04-25
+
+### Added
+
+- **Email (SMTP) notifications** — send alerts via email alongside ntfy/webhook
+  - Configurable in Settings: host, port, username, password, from, to, STARTTLS
+  - Fires on update, failure, and approval-needed events
+- **Approval queue** (`dam/core/approval.py`) — per-container update policy
+  - Policies: `auto` (default) | `notify` | `approve` | `hold`
+  - Set in `settings.yaml` under `containers.{name}.update_policy`
+  - **Approvals page** in web UI — pending updates with Approve / Reject / Apply Now
+  - Badge on nav item shows pending count
+  - Approved updates stored persistently in `.approval_queue.json`
+  - On `approve` policy: DAM detects update, queues it, notifies owner, waits
+  - On `hold` policy: DAM never auto-updates the container
+- **Maintenance windows** — updates only run during defined time window
+  - Configurable in Settings: start time, end time, day-of-week toggles
+  - Outside window: updates are detected but not applied
+  - Supports windows that cross midnight
+- New API endpoints:
+  - `GET  /api/approvals` — list pending and historical approvals
+  - `POST /api/approvals/{name}/approve` — approve a pending update
+  - `POST /api/approvals/{name}/reject` — reject a pending update
+  - `POST /api/approvals/{name}/apply` — apply an approved update immediately
+  - `DELETE /api/approvals/clear` — clear applied/rejected history
+
+### Changed
+
+- Settings page now includes Email SMTP configuration section
+- Settings page now includes Maintenance Window section with day toggles
+- 314 tests (was 295) — +19 approval/maintenance window tests
+- `NotificationConfig` extended with SMTP fields and `on_approval_needed` trigger
+
+---
+
 ## [0.8.0] — 2026-04-25
 
 ### Added

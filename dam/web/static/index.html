@@ -122,6 +122,10 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
       <div class="nav-item" :class="{active:pg==='images'}" @click="go('images')">🖼 Images</div>
       <div class="nav-item" :class="{active:pg==='import'}" @click="go('import')">📥 Import</div>
       <div class="nav-sep"></div>
+      <div class="nav-item" :class="{active:pg==='approvals'}" @click="go('approvals')">
+        ✅ Approvals
+        <span class="nbadge" x-show="approvals.pending&&approvals.pending.length>0" x-text="approvals.pending&&approvals.pending.length"></span>
+      </div>
       <div class="nav-item" :class="{active:pg==='clone'}" @click="go('clone')">🧬 Clone</div>
       <div class="nav-item" :class="{active:pg==='history'}" @click="go('history')">📋 History</div>
       <div class="nav-sep"></div>
@@ -806,6 +810,91 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
       </div>
     </div>
 
+    <!-- Approvals page -->
+    <div x-show="pg==='approvals'">
+      <div class="flex gap mb16" style="align-items:center">
+        <div class="page-title">✅ Approvals</div>
+        <button class="btn btn-s btn-sm mla" @click="loadApprovals()">↻ Refresh</button>
+        <button class="btn btn-s btn-sm" style="color:var(--dim)" @click="clearApprovals()">Clear completed</button>
+      </div>
+      <div class="alert ai" style="margin-bottom:12px;font-size:13px;line-height:1.6">
+        Containers with <strong>update_policy: approve</strong> in <code>settings.yaml</code> will queue here instead of auto-updating.
+        Review the available update and click Approve or Reject. Approved updates can be applied immediately or will run on the next scheduled update.
+      </div>
+
+      <div class="alert as" x-show="!approvals.all||approvals.all.length===0">
+        ✓ No pending or recent approvals.
+      </div>
+
+      <template x-if="approvals.all&&approvals.all.length>0">
+        <div>
+          <!-- Pending -->
+          <div x-show="approvals.pending&&approvals.pending.length>0" style="margin-bottom:16px">
+            <div class="card-title" style="margin-bottom:8px">⏳ Pending Approval</div>
+            <template x-for="item in approvals.pending" :key="item.container_name">
+              <div class="card" style="margin-bottom:8px">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">
+                  <div>
+                    <div style="font-weight:600;font-size:15px" x-text="item.container_name"></div>
+                    <div class="mono dim" style="font-size:11px" x-text="item.image"></div>
+                    <div style="font-size:12px;margin-top:4px">
+                      <span class="dim">Detected:</span> <span x-text="item.detected_at"></span>
+                    </div>
+                    <div style="font-size:12px;margin-top:2px" x-show="item.new_digest">
+                      <span class="dim">New digest:</span>
+                      <span class="mono" style="font-size:11px" x-text="item.new_digest"></span>
+                    </div>
+                  </div>
+                  <div style="display:flex;gap:8px;align-items:center">
+                    <button class="btn" style="background:rgba(34,197,94,.15);color:var(--green);border-color:rgba(34,197,94,.3)"
+                      @click="approveUpdate(item.container_name)">✓ Approve</button>
+                    <button class="btn btn-s" style="color:var(--red);border-color:var(--red)"
+                      @click="rejectUpdate(item.container_name)">✕ Reject</button>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <!-- Approved - ready to apply -->
+          <div x-show="approvals.all.filter(i=>i.status==='approved').length>0" style="margin-bottom:16px">
+            <div class="card-title" style="margin-bottom:8px">✓ Approved — Ready to Apply</div>
+            <template x-for="item in approvals.all.filter(i=>i.status==='approved')" :key="item.container_name">
+              <div class="card" style="margin-bottom:8px;border-color:rgba(34,197,94,.3)">
+                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+                  <div>
+                    <span style="font-weight:600" x-text="item.container_name"></span>
+                    <span class="dim" style="margin-left:8px;font-size:12px" x-text="item.image"></span>
+                  </div>
+                  <button class="btn" @click="applyUpdate(item.container_name)">
+                    Apply Now
+                  </button>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <!-- History -->
+          <div x-show="approvals.all.filter(i=>i.status==='applied'||i.status==='rejected').length>0">
+            <div class="card-title" style="margin-bottom:8px">History</div>
+            <table>
+              <thead><tr><th>Container</th><th>Status</th><th>Detected</th><th>Note</th></tr></thead>
+              <tbody>
+                <template x-for="item in approvals.all.filter(i=>i.status==='applied'||i.status==='rejected')" :key="item.container_name+item.detected_at">
+                  <tr>
+                    <td><strong x-text="item.container_name"></strong></td>
+                    <td><span :class="item.status==='applied'?'bs bs-running':'bs bs-exited'" x-text="item.status"></span></td>
+                    <td class="dim" style="font-size:12px" x-text="item.detected_at"></td>
+                    <td class="dim" style="font-size:12px" x-text="item.note||''"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </template>
+    </div>
+
     <!-- Clone Container page -->
     <div x-show="pg==='clone'">
       <div class="flex gap mb16" style="align-items:center">
@@ -1103,15 +1192,68 @@ input[type=checkbox]{width:auto;accent-color:var(--accent)}
                 </select>
               </div>
               <div class="frow" style="grid-column:1/-1">
-                <label class="flbl" x-text="sett.dam&&sett.dam.notifications_provider==='webhook'?'Webhook URL':'ntfy.sh URL (e.g. https://ntfy.sh/my-topic-name)'"></label>
-                <input type="text" x-model="sett.dam.notifications_url" class="finp" placeholder="https://ntfy.sh/my-dam-alerts">
+                <label class="flbl" x-text="sett.dam&&sett.dam.notifications_provider==='webhook'?'Webhook URL':sett.dam&&sett.dam.notifications_provider==='email'?'(see SMTP settings below)':'ntfy.sh URL (e.g. https://ntfy.sh/my-topic-name)'"></label>
+                <input type="text" x-model="sett.dam.notifications_url" class="finp" placeholder="https://ntfy.sh/my-dam-alerts" x-show="sett.dam&&sett.dam.notifications_provider!=='email'">
               </div>
+            </div>
+            <!-- Email SMTP settings -->
+            <div x-show="sett.dam&&sett.dam.notifications_provider==='email'" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;padding:10px;border:1px solid var(--border);border-radius:6px">
+              <div class="frow"><label class="flbl">SMTP Host</label><input type="text" x-model="sett.dam.smtp_host" class="finp" placeholder="smtp.gmail.com"></div>
+              <div class="frow"><label class="flbl">SMTP Port</label><input type="number" x-model="sett.dam.smtp_port" class="finp" placeholder="587"></div>
+              <div class="frow"><label class="flbl">Username</label><input type="text" x-model="sett.dam.smtp_user" class="finp" placeholder="you@gmail.com"></div>
+              <div class="frow"><label class="flbl">Password / App password</label><input type="password" x-model="sett.dam.smtp_password" class="finp" placeholder="••••••••"></div>
+              <div class="frow"><label class="flbl">From address</label><input type="text" x-model="sett.dam.smtp_from" class="finp" placeholder="dam@yourdomain.com"></div>
+              <div class="frow"><label class="flbl">To address(es)</label><input type="text" x-model="sett.dam.smtp_to" class="finp" placeholder="you@example.com"></div>
+              <div class="frow" style="grid-column:1/-1">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                  <input type="checkbox" x-model="sett.dam.smtp_tls"> Use STARTTLS (recommended)
+                </label>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;display:none">
             </div>
             <div class="flex gap" style="margin-top:10px">
               <button class="btn btn-s btn-sm" @click="testNotification()" :disabled="ld.notiftest===true">
                 <span x-text="ld.notiftest?'Sending...':`Send test`"></span>
               </button>
               <span class="dim" style="font-size:12px;align-self:center" x-text="notifTestMsg"></span>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="margin-bottom:12px">
+          <div class="card-title">🕐 Maintenance Window</div>
+          <div class="alert ai" style="margin-bottom:10px;font-size:12px;line-height:1.5">
+            When enabled, automated updates only run during the defined window.
+            Outside the window, updates are detected but not applied until the next window opens.
+          </div>
+          <div x-show="sett&&sett.dam">
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+              <div class="frow">
+                <label class="flbl">Enable maintenance window</label>
+                <select x-model="sett.dam.maintenance_enabled" class="finp">
+                  <option value="false">Disabled (update anytime)</option>
+                  <option value="true">Enabled</option>
+                </select>
+              </div>
+              <div class="frow">
+                <label class="flbl">Start time (HH:MM)</label>
+                <input type="text" x-model="sett.dam.maintenance_start" class="finp" placeholder="02:00">
+              </div>
+              <div class="frow">
+                <label class="flbl">End time (HH:MM)</label>
+                <input type="text" x-model="sett.dam.maintenance_end" class="finp" placeholder="04:00">
+              </div>
+            </div>
+            <div class="frow" style="margin-top:8px">
+              <label class="flbl">Days (click to toggle)</label>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                <template x-for="(day,idx) in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']" :key="idx">
+                  <button class="btn btn-s btn-sm"
+                    :style="(sett.dam.maintenance_weekdays||[0,1,2,3,4,5,6]).includes(idx)?'background:var(--accent);color:#fff;border-color:var(--accent)':''"
+                    @click="toggleWeekday(idx)"
+                    x-text="day"></button>
+                </template>
+              </div>
             </div>
           </div>
         </div>
@@ -1149,7 +1291,7 @@ auth:false,lf:{u:'',p:''},le:'',ll:false,
 pg:'dash',ver:'',plat:'',dark:true,q:'',ar:false,_art:null,
 cs:[],ld:{},
 eolR:[],eolS:{},eolW:0,
-drift:{},snaps:[],snapD:null,snapMsg:'',snapErr:false,driftResetOk:'',snapUTC:false,notifTestMsg:'',imp:{yaml:'',preview:null,results:null,err:'',overwrite:false,filename:'',macActions:{}},pw:{cur:'',usr:'',new1:'',new2:'',err:'',ok:''},sett:null,dmn:null,clone:{src:'',name:'',ip:'',mac:'',envK:'',envV:'',envOverrides:[],preview:'',result:null,err:''},hist:[],driftIgnored:[],imgs:[],imgPull:'',netHealth:[],_fixMsg:'',netHealth:[],_fixMsg:'',
+drift:{},snaps:[],snapD:null,snapMsg:'',snapErr:false,driftResetOk:'',snapUTC:false,notifTestMsg:'',imp:{yaml:'',preview:null,results:null,err:'',overwrite:false,filename:'',macActions:{}},pw:{cur:'',usr:'',new1:'',new2:'',err:'',ok:''},sett:null,dmn:null,clone:{src:'',name:'',ip:'',mac:'',envK:'',envV:'',envOverrides:[],preview:'',result:null,err:''},hist:[],driftIgnored:[],imgs:[],imgPull:'',netHealth:[],_fixMsg:'',approvals:{pending:[],all:[]},netHealth:[],_fixMsg:'',approvals:{pending:[],all:[]},
 us:1,sel:[],drr:[],drs:{},ulog:[],usum:{},sid:null,
 pc:null,pr:null,
 expSel:[],expFmt:'dam-yaml',
@@ -1181,6 +1323,7 @@ async loadAll(){
   this.ver=h.version||'';this.plat=h.platform||'';
   await Promise.all([this.loadC(),this.loadEol()]);
   this.checkNetHealth();
+  this.loadApprovals();
   this.chkDv();
 },
 
@@ -1216,6 +1359,7 @@ go(p){
   if(p==='daemon')this.loadDaemon();
   if(p==='clone'){this.clone.src='';this.clone.result=null;this.clone.preview='';this.clone.err='';this.loadC();}
   if(p==='history')this.loadHistory();
+  if(p==='approvals')this.loadApprovals();
   if(p==='images')this.loadImages();
 },
 
@@ -1537,6 +1681,32 @@ async doDeleteImage(img){
   }catch(e){alert(e.message);}
   finally{this.ld.imgdel=false;}
 },
+async loadApprovals(){
+  try{
+    const d=await this.api('/api/approvals');
+    if(d)this.approvals=d;
+  }catch(e){this.approvals={pending:[],all:[]};}
+},
+async approveUpdate(name){
+  const d=await this.api('/api/approvals/'+name+'/approve',{method:'POST'});
+  if(d&&d.ok)await this.loadApprovals();
+  else alert('Failed: '+(d&&d.detail||'unknown'));
+},
+async rejectUpdate(name){
+  if(!confirm('Reject update for '+name+'?'))return;
+  const d=await this.api('/api/approvals/'+name+'/reject',{method:'POST'});
+  if(d&&d.ok)await this.loadApprovals();
+},
+async applyUpdate(name){
+  if(!confirm('Apply approved update for '+name+' now?'))return;
+  const d=await this.api('/api/approvals/'+name+'/apply',{method:'POST'});
+  if(d&&d.ok){await this.loadApprovals();await this.loadC();}
+  else alert('Failed: '+(d&&d.detail||'unknown'));
+},
+async clearApprovals(){
+  await this.api('/api/approvals/clear',{method:'DELETE'});
+  await this.loadApprovals();
+},
 async checkNetHealth(){
   try{
     const d=await this.api('/api/network/health');
@@ -1618,6 +1788,14 @@ async loadSettings(){
   try{const d=await this.api('/api/settings');if(d){this.sett=d;this.sett.err='';this.sett.savedok='';}}
   catch(e){}finally{this.ld.settings=false;}
 },
+toggleWeekday(idx){
+  if(!this.sett||!this.sett.dam)return;
+  if(!this.sett.dam.maintenance_weekdays)this.sett.dam.maintenance_weekdays=[0,1,2,3,4,5,6];
+  const days=this.sett.dam.maintenance_weekdays;
+  const pos=days.indexOf(idx);
+  if(pos>=0)days.splice(pos,1);else days.push(idx);
+  days.sort((a,b)=>a-b);
+},
 async saveSettings(){
   this.ld.savesett=true;this.sett.err='';this.sett.savedok='';
   try{
@@ -1630,6 +1808,16 @@ async saveSettings(){
       notifications_enabled:String(this.sett.dam.notifications_enabled||'false'),
       notifications_provider:this.sett.dam.notifications_provider||'ntfy',
       notifications_url:this.sett.dam.notifications_url||'',
+      smtp_host:this.sett.dam.smtp_host||'',
+      smtp_port:this.sett.dam.smtp_port||587,
+      smtp_user:this.sett.dam.smtp_user||'',
+      smtp_from:this.sett.dam.smtp_from||'',
+      smtp_to:this.sett.dam.smtp_to||'',
+      smtp_tls:String(this.sett.dam.smtp_tls||'true'),
+      maintenance_enabled:String(this.sett.dam.maintenance_enabled||'false'),
+      maintenance_start:this.sett.dam.maintenance_start||'02:00',
+      maintenance_end:this.sett.dam.maintenance_end||'04:00',
+      maintenance_weekdays:this.sett.dam.maintenance_weekdays||[0,1,2,3,4,5,6],
     })});
     if(d&&d.ok)this.sett.savedok='\u2713 Settings saved';
   }catch(e){this.sett.err=e.message;}
