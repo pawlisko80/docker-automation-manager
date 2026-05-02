@@ -105,6 +105,7 @@ def _dict_to_config(data: dict) -> ContainerConfig:
         labels=data.get("labels", {}),
         version_strategy=data.get("version_strategy", "latest"),
         pinned_digest=data.get("pinned_digest"),
+        mac_address=data.get("mac_address"),
     )
 
 

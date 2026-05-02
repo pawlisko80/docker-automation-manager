@@ -128,6 +128,8 @@ def _build_run_kwargs(cfg: ContainerConfig) -> dict:
         kwargs["cap_add"] = cfg.cap_add
     if cfg.cap_drop:
         kwargs["cap_drop"] = cfg.cap_drop
+    if cfg.mac_address:
+        kwargs["mac_address"] = cfg.mac_address
 
     # --- Network ---
     network_mode = cfg.network_mode

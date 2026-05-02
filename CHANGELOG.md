@@ -11,6 +11,44 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.8.0] — 2026-04-25
+
+### Added
+
+- **Static MAC address support** — containers can have a fixed MAC address so the DHCP server always assigns the same IP
+  - Inspector reads MAC from live `NetworkSettings` per container
+  - MAC shown in dashboard IP/Network column (monospace, under IP)
+  - `_build_run_kwargs` passes `mac_address` to Docker on recreate/create
+  - `generate_mac()` utility — random locally-administered MAC (`02:xx:xx:xx:xx:xx`)
+  - `check_mac_conflict()` — detects MAC conflicts before import
+- **Import MAC conflict resolution (Options A/B/C)** — when importing a container whose MAC already exists:
+  - **Option A** — generate new random MAC for the import (default)
+  - **Option B** — stop & remove existing container, import with original MAC
+  - **Option C** — recreate existing container with new MAC, import keeps original MAC
+  - Conflict shown in import editor with radio button selection per container
+- **Clone always generates new random MAC** — prevents MAC conflicts on same network
+- **Network health check** — dashboard shows warning for containers stuck on `none` network with **Fix (Recreate)** button; removes warning immediately after fix
+- **Rollback (improved)** — force-recreates ALL containers from snapshot regardless of digest; shows snapshot filename in confirmation dialog; reloads dashboard after rollback
+- `GET /api/network/health` — detect containers with network issues
+- `POST /api/network/fix/{name}` — recreate container with correct network from startup
+- MAC field added to Clone page, Import editor, and Export YAML
+
+### Fixed
+
+- Inspector: when `HostConfig.NetworkMode=none` but live `NetworkSettings` shows real network (after manual reconnect), use the live network — preserves static IPs on next update
+- Rollback: was skipping containers due to digest comparison — now always recreates
+- `checkNetHealth()` called on dashboard load to auto-detect network issues
+- Import: stale state cleared when navigating back to Import page
+
+### Changed
+
+- `ContainerConfig` dataclass: added `mac_address: Optional[str] = None`
+- Export always includes `mac_address` field
+- Import reads `mac_address` from YAML via `_dict_to_config`
+- 295 tests passing
+
+---
+
 ## [0.7.0] — 2026-04-09
 
 ### Added

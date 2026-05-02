@@ -433,4 +433,5 @@ def _config_to_dict(cfg: ContainerConfig) -> dict:
         "labels": cfg.labels,
         "version_strategy": cfg.version_strategy,
         "pinned_digest": cfg.pinned_digest,
+        "mac_address": cfg.mac_address,
     }

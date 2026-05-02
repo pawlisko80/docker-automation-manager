@@ -248,6 +248,7 @@ def _cfg_to_dict(cfg: ContainerConfig) -> dict:
             "image": cfg.image,
             "image_id": cfg.image_id[:19] if cfg.image_id else "",
             "is_self": is_self,
+            "mac_address": cfg.mac_address or "",
             "status": cfg.status,
             "restart_policy": cfg.restart_policy,
             "network_mode": cfg.network_mode,
@@ -878,6 +879,7 @@ class CloneRequest(BaseModel):
     source: str
     new_name: str
     new_ip: Optional[str] = None
+    new_mac: Optional[str] = None  # if None, generates random MAC
     env_overrides: Optional[dict] = None
     port_overrides: Optional[list] = None
     dry_run: bool = False
@@ -1121,6 +1123,10 @@ async def clone_container(req: CloneRequest, _=Depends(require_auth)):
                 if net.is_static:
                     net.ip_address = req.new_ip
 
+        # Always generate a new MAC for clones to avoid conflicts
+        from dam.core.inspector import generate_mac
+        cfg.mac_address = req.new_mac if req.new_mac else generate_mac()
+
         # Build preview of what will be created
         from dam.core.exporter import Exporter
         import tempfile
@@ -1210,6 +1216,7 @@ class ImportRequest(BaseModel):
     edited_containers: Optional[list] = None  # edited preview from web UI
     dry_run: bool = True
     overwrite: bool = False
+    mac_actions: Optional[dict] = None  # {container_name: "skip"|"overwrite"|"swap"}
 
 
 @app.post("/api/import/preview")
@@ -1226,7 +1233,19 @@ async def import_preview(req: ImportRequest, _=Depends(require_auth)):
         finally:
             tmp.unlink(missing_ok=True)
 
+        from dam.core.inspector import check_mac_conflict
+        import docker as _dk
+        try:
+            _cli = _dk.from_env()
+        except Exception:
+            _cli = None
+
         def _c_to_dict(c):
+            mac_conflict = None
+            if _cli and c.mac_address:
+                conflict_name = check_mac_conflict(c.mac_address, _cli)
+                if conflict_name and conflict_name != c.name:
+                    mac_conflict = conflict_name
             return {
                 "name": c.name,
                 "image": c.image,
@@ -1235,6 +1254,8 @@ async def import_preview(req: ImportRequest, _=Depends(require_auth)):
                 "restart_policy": c.restart_policy,
                 "ports": [f"{p.host_port}:{p.container_port}" for p in (c.ports or [])],
                 "env": dict(c.env or {}),
+                "mac_address": c.mac_address,
+                "mac_conflict": mac_conflict,
             }
         return {"ok": True, "meta": meta, "containers": [_c_to_dict(c) for c in configs]}
     except Exception as e:
@@ -1303,6 +1324,50 @@ async def import_run(req: ImportRequest, _=Depends(require_auth)):
                             ))
                     cfg.ports = new_ports
                 configs[i] = cfg
+
+        # Handle MAC conflict actions per container
+        from dam.core.inspector import generate_mac, check_mac_conflict
+        import docker as _dk2
+        try:
+            _cli2 = _dk2.from_env()
+        except Exception:
+            _cli2 = None
+
+        mac_actions = req.mac_actions or {}
+        for cfg in configs:
+            if not cfg.mac_address or not _cli2:
+                continue
+            conflict_name = check_mac_conflict(cfg.mac_address, _cli2)
+            if not conflict_name or conflict_name == cfg.name:
+                continue
+            action = mac_actions.get(cfg.name, "skip")
+            if action == "skip":
+                # Generate new random MAC for the import
+                cfg.mac_address = generate_mac()
+            elif action == "overwrite":
+                # Stop and remove the conflicting container first
+                try:
+                    c = _cli2.containers.get(conflict_name)
+                    c.stop()
+                    c.remove()
+                except Exception:
+                    pass
+                # Keep original MAC
+            elif action == "swap":
+                # Recreate conflicting container with new MAC, keep original for import
+                try:
+                    from dam.core.inspector import Inspector
+                    all_cfgs = Inspector(_platform).inspect_all(
+                        settings_containers=_settings.get("containers", {}) or {})
+                    conflict_cfg = next((x for x in all_cfgs if x.name == conflict_name), None)
+                    if conflict_cfg:
+                        conflict_cfg.mac_address = generate_mac()
+                        dam_cfg = _settings.get("dam", {})
+                        updater = Updater(platform=_platform, dry_run=False,
+                                          recreate_delay=dam_cfg.get("recreate_delay", 5))
+                        updater._recreate(conflict_cfg, conflict_cfg.image)
+                except Exception:
+                    pass  # Continue import even if swap fails
 
         importer = Importer(_platform, dry_run=req.dry_run, overwrite=req.overwrite)
         results = importer.import_configs(configs)

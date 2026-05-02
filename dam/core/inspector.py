@@ -23,6 +23,31 @@ from docker.errors import DockerException
 
 from dam.platform.base import BasePlatform
 
+import logging
+logger = logging.getLogger(__name__)
+
+
+def generate_mac() -> str:
+    """Generate a random locally-administered MAC address (02:xx:xx:xx:xx:xx)."""
+    import random
+    parts = [0x02] + [random.randint(0x00, 0xff) for _ in range(5)]
+    return ":".join(f"{p:02x}" for p in parts)
+
+
+def check_mac_conflict(mac: str, client) -> Optional[str]:
+    """Return container name if MAC is already in use, else None."""
+    if not mac:
+        return None
+    try:
+        for c in client.containers.list(all=True):
+            nets = c.attrs.get("NetworkSettings", {}).get("Networks", {})
+            for net_cfg in nets.values():
+                if net_cfg.get("MacAddress", "").lower() == mac.lower():
+                    return c.name
+    except Exception:
+        pass
+    return None
+
 
 # ------------------------------------------------------------
 # Data model
@@ -89,6 +114,7 @@ class ContainerConfig:
     exposed_ports: list[str] = None    # e.g. ["8123/tcp", "80/tcp"]
 
     # DAM metadata (not from Docker — populated by inspector)
+    mac_address: Optional[str] = None   # MAC address (for DHCP-based IP assignment)
     version_strategy: str = "latest"   # latest / stable / pinned
     pinned_digest: Optional[str] = None
 
@@ -280,6 +306,14 @@ class Inspector:
         version_strategy = container_settings.get("version_strategy", "latest")
         pinned_digest = container_settings.get("pinned_digest", None)
 
+        # MAC address — read from primary network config
+        mac_address = None
+        live_nets = attrs.get("NetworkSettings", {}).get("Networks", {})
+        for net_name_m, net_cfg_m in live_nets.items():
+            if net_name_m != "none":
+                mac_address = net_cfg_m.get("MacAddress") or None
+                break
+
         # Resolve image name: if Config.Image is a bare sha256 digest,
         # look up the actual tag from the image object or a newer tagged version
         image_name = cc.get("Image", "")
@@ -317,6 +351,7 @@ class Inspector:
             name=name,
             image=image_name,
             image_id=image_id,
+            mac_address=mac_address,
             status=attrs.get("State", {}).get("Status", "unknown"),
             restart_policy=hc.get("RestartPolicy", {}).get("Name", "no"),
             network_mode=network_mode,
